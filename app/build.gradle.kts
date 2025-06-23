@@ -4,6 +4,20 @@ plugins {
 }
 
 android {
+    signingConfigs {
+        create("release") {
+            val keystoreFile = System.getenv("KEYSTORE_PATH")?.let { file(it) }
+            if (keystoreFile != null && keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            } else {
+                // 這可以防止在本機編譯時因找不到環境變數而報錯
+                println("簽章金鑰未找到，Release 版將不會被簽署。")
+            }
+        }
+    }
     namespace = "com.wangyiheng.vcamsx"
     compileSdk = 34
 
@@ -25,7 +39,7 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
