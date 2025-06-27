@@ -736,9 +736,17 @@ class MainHook : IXposedHookLoadPackage {
                         override fun beforeHookedMethod(methodParam: MethodHookParam) {
                             // 獲取第一個參數，它通常是 List<Surface> 或 SessionConfiguration
                             val firstArg = methodParam.args.getOrNull(0)
+                            
+                            // >>>>> 【修正】START：修正日誌拼接的語法 <<<<<
+                            val method = methodParam.method
+                            // 將 Java 的 Class<?>[] 數組安全地轉換為 Kotlin List<String>
+                            val paramTypesString = method.parameterTypes.map { clazz -> clazz.simpleName }.joinToString(", ")
+                            val signatureString = "Signature: ${method.name}($paramTypesString)\n\t> Arg[0]: $firstArg"
+                            // >>>>> 【修正】END <<<<<
+                            
                             logDebug(
                                 "Hooked: C2.createCaptureSession (DYNAMICALLY)",
-                                "Signature: ${methodParam.method.name}(${methodParam.method.parameterTypes.joinToString(", ") { it.simpleName }})\n\t> Arg[0]: $firstArg",
+                                signatureString, // 使用修正後的字串
                                 true, lpparam
                             )
                             try {
