@@ -79,11 +79,10 @@ class MainHook : IXposedHookLoadPackage {
 
             // 1. 無論如何，都記錄到 XposedBridge Log
             XposedBridge.log(logMessage)
-            toOverlay = false
             // 2. 如果標記為 toOverlay，則更新到懸浮窗
-            if (toOverlay) {
-                context?.let { ctx -> DebugOverlay.show(ctx, message) }
-            }
+            //if (toOverlay) {
+               // context?.let { ctx -> DebugOverlay.show(ctx, message) }
+           // }
         }
 
         /**
