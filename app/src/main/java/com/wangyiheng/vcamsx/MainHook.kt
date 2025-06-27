@@ -1,6 +1,7 @@
 // 文件名：MainHook.kt
 package com.wangyiheng.vcamsx
 import android.app.Application
+import android.content.Context
 import android.graphics.SurfaceTexture
 import android.hardware.Camera
 import android.hardware.Camera.PreviewCallback
@@ -81,7 +82,7 @@ class MainHook : IXposedHookLoadPackage {
 
             // 2. 如果標記為 toOverlay，則更新到懸浮窗
             if (toOverlay) {
-                context?.let { DebugOverlay.show(it, message) }
+                context?.let { ctx -> DebugOverlay.show(ctx, message) }
             }
         }
 
