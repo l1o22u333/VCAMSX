@@ -114,7 +114,7 @@ object VideoPlayer {
             setVolume(volume,volume)
             setOnPreparedListener { start() }
             val videoPathUri = Uri.parse("content://com.wangyiheng.vcamsx.videoprovider")
-            context?.let { setDataSource(it, videoPathUri) }
+            context?.let { ctx -> setDataSource(ctx, videoPathUri) }
             prepare()
         }
     }
