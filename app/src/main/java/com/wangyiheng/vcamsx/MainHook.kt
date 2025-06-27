@@ -126,7 +126,7 @@ class MainHook : IXposedHookLoadPackage {
             // 6. 將拼接好的、帶有完整前綴的日誌一次性打印
             XposedBridge.log(fullLogMessage)
         }
-
+    }
     private var c2_virtual_surface: Surface? = null
     private var c2_state_callback_class: Class<*>? = null
     private var c2_state_callback: CameraDevice.StateCallback? = null
