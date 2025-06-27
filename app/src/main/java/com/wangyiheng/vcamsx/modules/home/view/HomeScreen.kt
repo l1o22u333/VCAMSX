@@ -78,6 +78,23 @@ fun HomeScreen() {
                 Text("保存RTMP链接")
             }
             Button(
+                onClick = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        if (!Settings.canDrawOverlays(context)) {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:${context.packageName}")
+                            )
+                            overlayPermissionLauncher.launch(intent)
+                        } else {
+                            Toast.makeText(context, "權限已開啟，無需重複操作", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            ) {
+                Text("開啟懸浮窗調試權限")
+            }
+            Button(
                 modifier = buttonModifier,
                 onClick = {
                     requestPermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
