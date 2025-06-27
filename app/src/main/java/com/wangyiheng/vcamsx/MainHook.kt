@@ -342,6 +342,50 @@ class MainHook : IXposedHookLoadPackage {
                     // >>>>> 新增/修改 END <<<<<
                 }
             })
+        try {
+            XposedHelpers.findAndHookConstructor(
+                "android.graphics.SurfaceTexture", lpparam.classLoader,
+                Int::class.java, // 對應 public SurfaceTexture(int texName)
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        // 在 SurfaceTexture 被創建之後記錄日誌
+                        val stObject = param.thisObject as SurfaceTexture
+                        val callingStackTrace = Throwable() // 創建一個 Throwable 來獲取調用堆棧
+                        
+                        logDebug(
+                            "Hooked: SurfaceTexture CONSTRUCTOR (int)",
+                            "Created ST: $stObject\n\t> StackTrace:\n${android.util.Log.getStackTraceString(callingStackTrace)}",
+                            true, // 在懸浮窗上顯示，給我們一個強信號
+                            lpparam
+                        )
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logError(t, "Hooking SurfaceTexture(int)", lpparam)
+        }
+
+        try {
+             XposedHelpers.findAndHookConstructor(
+                "android.graphics.SurfaceTexture", lpparam.classLoader,
+                Boolean::class.java, // 對應 public SurfaceTexture(boolean singleBufferMode)
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        val stObject = param.thisObject as SurfaceTexture
+                        val callingStackTrace = Throwable()
+                        
+                        logDebug(
+                            "Hooked: SurfaceTexture CONSTRUCTOR (boolean)",
+                            "Created ST: $stObject\n\t> StackTrace:\n${android.util.Log.getStackTraceString(callingStackTrace)}",
+                            true,
+                            lpparam
+                        )
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logError(t, "Hooking SurfaceTexture(boolean)", lpparam)
+        }
     }
 
     private fun process_callback(param: MethodHookParam) {
