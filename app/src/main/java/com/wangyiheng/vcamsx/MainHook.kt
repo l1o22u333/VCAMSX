@@ -79,7 +79,7 @@ class MainHook : IXposedHookLoadPackage {
 
             // 1. 無論如何，都記錄到 XposedBridge Log
             XposedBridge.log(logMessage)
-
+            toOverlay = false
             // 2. 如果標記為 toOverlay，則更新到懸浮窗
             if (toOverlay) {
                 context?.let { ctx -> DebugOverlay.show(ctx, message) }
@@ -97,7 +97,7 @@ class MainHook : IXposedHookLoadPackage {
             val errorMessageForOverlay = "!!! ERROR in $fromFunction: ${t.javaClass.simpleName}"
         
             // 2. 在懸浮窗上醒目地顯示簡短的錯誤
-            context?.let { ctx -> DebugOverlay.show(ctx, errorMessageForOverlay) }
+            //context?.let { ctx -> DebugOverlay.show(ctx, errorMessageForOverlay) }
         
             // 3. 【修正點】定義 logTitle，這是日誌的第一行標題
             val logTitle = buildString {
