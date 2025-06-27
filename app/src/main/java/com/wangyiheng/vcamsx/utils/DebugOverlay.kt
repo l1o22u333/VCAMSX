@@ -96,7 +96,7 @@ object DebugOverlay {
 
             } catch (e: Exception) {
                 XposedBridge.log("[VCAMSX Debug] Error showing overlay: ${e.message}")
-                e.printStackTrace(System.err) // 打印更詳細的錯誤到 logcat
+                XposedBridge.log(e)
             }
         }
     }
