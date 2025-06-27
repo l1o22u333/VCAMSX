@@ -713,59 +713,31 @@ class MainHook : IXposedHookLoadPackage {
     private fun process_camera2_init(c2StateCallbackClass: Class<Any>?, lpparam: XC_LoadPackage.LoadPackageParam) {
         logDebug("Executing process_camera2_init", "Target Class: ${c2StateCallbackClass?.name}", false, lpparam)
 
-        // onOpened 的職責：獲取具體的 CameraDevice 實例，並對其所有 createCaptureSession 方法進行 Hook
         XposedHelpers.findAndHookMethod(c2StateCallbackClass, "onOpened", CameraDevice::class.java, object : XC_MethodHook() {
             override fun beforeHookedMethod(param: MethodHookParam) {
                 logDebug("Hooked: C2.onOpened", "Device: ${param.args[0]}", true, lpparam)
                 try {
-                    // 1. 創建我們的虛擬 Surface
                     needRecreate = true
                     createVirtualSurface()
                     logDebug("Virtual surface is ready", "Surface: $c2_virtual_surface", false, lpparam)
-
                     c2_reader_Surfcae = null
                     original_preview_Surface = null
 
-                    // 2. 【關鍵修正】遍歷此 CameraDevice 實例的所有方法，Hook 所有名為 createCaptureSession 的方法
                     val cameraDeviceInstance = param.args[0] as? CameraDevice ?: return
                     val methods = cameraDeviceInstance::class.java.declaredMethods
                     var hookedCount = 0
 
-                    // 3. 創建一個可重用的 Hook 回調
                     val captureSessionHook = object : XC_MethodHook() {
                         override fun beforeHookedMethod(methodParam: MethodHookParam) {
-                            val firstArg = methodParam.args.getOrNull(0)
-                            
-                            // >>>>> 【最終修正 V7】START：採用終極防禦性程式設計 <<<<<
-                            val method = methodParam.method
-                            val signatureString: String
-                            try {
-                                // 步驟 1: 明確調用 getter 方法並存儲在一個明確類型的變數中
-                                val paramTypes: Array<Class<*>> = method.parameterTypes
-
-                                // 步驟 2: 手動迭代，避免任何可能引起類型推斷問題的集合操作
-                                val paramTypeNames = mutableListOf<String>()
-                                for (i in paramTypes.indices) {
-                                    paramTypeNames.add(paramTypes[i].simpleName)
-                                }
-
-                                // 步驟 3: 在所有類型都處理完畢後，再進行字串拼接
-                                val paramTypesJoined = paramTypeNames.joinToString(", ")
-                                signatureString = "Signature: ${method.name}($paramTypesJoined)\n\t> Arg[0]: $firstArg"
-                            } catch (e: Exception) {
-                                // 如果在生成日誌簽名時都發生錯誤，則提供一個備用的、絕對安全的日誌輸出
-                                logError(e, "BuildingSignature", lpparam)
-                                signatureString = "Signature: ${method.name}(<Error getting params>)\n\t> Arg[0]: $firstArg"
-                            }
-                            // >>>>> 【最終修正 V7】END <<<<<
-                            
+                            // 【V8 修正點 1】簡化日誌，不再動態生成簽名，避免編譯錯誤
                             logDebug(
                                 "Hooked: C2.createCaptureSession (DYNAMICALLY)",
-                                signatureString,
+                                "Method: ${methodParam.method.name}, Arg count: ${methodParam.args.size}",
                                 true, lpparam
                             )
+
                             try {
-                                // ... 後續的 when(firstArg) ... 邏輯保持不變 ...
+                                val firstArg = methodParam.args.getOrNull(0)
                                 when (firstArg) {
                                     is SessionConfiguration -> {
                                         val originalConfig = firstArg
@@ -776,12 +748,14 @@ class MainHook : IXposedHookLoadPackage {
                                             originalConfig.executor,
                                             originalConfig.stateCallback
                                         )
+                                        // 【V8 修正點 2】直接修改參數數組的元素
                                         methodParam.args[0] = fakeConfig
-                                        logDebug("Replaced SessionConfiguration with fake config", null, false, lpparam)
+                                        logDebug("Replaced SessionConfiguration", null, false, lpparam)
                                     }
                                     is List<*> -> {
+                                        // 【V8 修正點 2】直接修改參數數組的元素
                                         methodParam.args[0] = listOf(c2_virtual_surface)
-                                        logDebug("Replaced List<Surface> with fake surface list", null, false, lpparam)
+                                        logDebug("Replaced List<Surface>", null, false, lpparam)
                                     }
                                     else -> {
                                         logDebug("Unsupported createCaptureSession variant found", "First arg type: ${firstArg?.javaClass?.name}", false, lpparam)
@@ -790,11 +764,9 @@ class MainHook : IXposedHookLoadPackage {
                             } catch (t: Throwable) {
                                 logError(t, "createCaptureSession_dynamic_hook", lpparam)
                             }
-                            
                         }
                     }
 
-                    // 4. 遍歷並 Hook
                     for (method in methods) {
                         if (method.name == "createCaptureSession") {
                             XposedBridge.hookMethod(method, captureSessionHook)
