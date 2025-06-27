@@ -1,3 +1,4 @@
+// 文件名：VideoPlayer.kt
 package com.wangyiheng.vcamsx.utils
 
 import android.media.MediaPlayer
@@ -11,6 +12,7 @@ import com.wangyiheng.vcamsx.MainHook.Companion.oriHolder
 import com.wangyiheng.vcamsx.MainHook.Companion.original_c1_preview_SurfaceTexture
 import com.wangyiheng.vcamsx.MainHook.Companion.original_preview_Surface
 import com.wangyiheng.vcamsx.utils.InfoProcesser.videoStatus
+import de.robv.android.xposed.XposedBridge // >>>>> 1. 導入 XposedBridge <<<<<
 import tv.danmaku.ijk.media.player.IjkMediaPlayer
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -24,41 +26,49 @@ object VideoPlayer {
     var copyReaderSurface:Surface? = null
     var currentRunningSurface:Surface? = null
     private val scheduledExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
+
+    // >>>>> 2. 新增統一的日誌輔助函數 <<<<<
+    private fun log(message: String) {
+        // 使用一個新的、獨立的標籤，方便過濾
+        XposedBridge.log("[VCAMSX_PLAYER_DEBUG] $message")
+    }
+    
     init {
-        // 初始化代码...
+        log("VideoPlayer object initialized.")
         startTimerTask()
     }
 
-    // 启动定时任务
+    // 啟動定時任務
     private fun startTimerTask() {
         scheduledExecutor.scheduleWithFixedDelay({
-            // 每五秒执行的代码
             performTask()
         }, 10, 10, TimeUnit.SECONDS)
     }
 
-    // 实际执行的任务
+    // 實際執行的任務
     private fun performTask() {
+        log("Timer task running: Checking for player restart.")
         restartMediaPlayer()
     }
 
     fun restartMediaPlayer(){
         if(videoStatus?.isVideoEnable == true || videoStatus?.isLiveStreamingEnabled == true) return
         if(currentRunningSurface == null || currentRunningSurface?.isValid == false) return
+        log("Restarting media player because it seems idle.")
         releaseMediaPlayer()
     }
 
     // 公共配置方法
-    private fun configureMediaPlayer(mediaPlayer: IjkMediaPlayer) {
-        mediaPlayer.apply {
-            // 公共的错误监听器
+    private fun configureMediaPlayer(player: IjkMediaPlayer) {
+        player.apply {
             setOnErrorListener { _, what, extra ->
-                Toast.makeText(context, "播放错误: $what", Toast.LENGTH_SHORT).show()
+                // >>>>> 3. 在所有監聽器中加入詳細日誌 <<<<<
+                log("!!! IJK Player ERROR. What: $what, Extra: $extra")
+                Toast.makeText(context, "播放錯誤: $what", Toast.LENGTH_SHORT).show()
                 true
             }
-
-            // 公共的信息监听器
             setOnInfoListener { _, what, extra ->
+                log("IJK Player Info. What: $what, Extra: $extra")
                 true
             }
         }
@@ -66,63 +76,69 @@ object VideoPlayer {
 
     // RTMP流播放器初始化
     fun initRTMPStreamPlayer() {
+        log("Initializing RTMP Stream Player...")
         ijkMediaPlayer = IjkMediaPlayer().apply {
-            // 硬件解码设置
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 0)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-auto-rotate", 1)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-handle-resolution-change", 1)
-
-            // 缓冲设置
             setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "dns_cache_clear", 1)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", 0)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec_mpeg4", 1)
-//            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "analyzemaxduration", 100L)
-             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "analyzemaxduration", 5000L)
+            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "analyzemaxduration", 5000L)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "probesize", 2048L)
-//            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "probesize", 1024L)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "flush_packets", 1L)
-//            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 1L)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 0L)
             setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 1L)
 
             Toast.makeText(context, videoStatus!!.liveURL, Toast.LENGTH_SHORT).show()
+            log("RTMP URL: ${videoStatus!!.liveURL}")
 
-            // 应用公共配置
             configureMediaPlayer(this)
-
-            // 设置 RTMP 流的 URL
             dataSource = videoStatus!!.liveURL
-
-            // 异步准备播放器
             prepareAsync()
 
-            // 准备好后的操作
             setOnPreparedListener {
+                log("IJK Player prepared. Setting surface...")
                 original_preview_Surface?.let { setSurface(it) }
                 Toast.makeText(context, "直播接收成功", Toast.LENGTH_SHORT).show()
+                log("Starting IJK Player...")
                 start()
             }
         }
     }
 
-
     fun initMediaPlayer(surface:Surface){
+        log("Initializing local MediaPlayer for surface: $surface")
         val volume = if (videoStatus?.volume == true) 1F else 0F
         mediaPlayer = MediaPlayer().apply {
-            isLooping = true
-            setSurface(surface)
-            setVolume(volume,volume)
-            setOnPreparedListener { start() }
-            val videoPathUri = Uri.parse("content://com.wangyiheng.vcamsx.videoprovider")
-            context?.let { ctx -> setDataSource(ctx, videoPathUri) }
-            prepare()
+            try {
+                isLooping = true
+                setSurface(surface)
+                setVolume(volume,volume)
+                setOnPreparedListener {
+                    log("Local MediaPlayer prepared. Starting playback.")
+                    start()
+                }
+                // >>>>> 3. 在所有監聽器中加入詳細日誌 <<<<<
+                setOnErrorListener { _, what, extra ->
+                    log("!!! Local MediaPlayer ERROR. What: $what, Extra: $extra")
+                    true
+                }
+                val videoPathUri = Uri.parse("content://com.wangyiheng.vcamsx.videoprovider")
+                log("Setting data source: $videoPathUri")
+                context?.let { ctx -> setDataSource(ctx, videoPathUri) }
+                prepareAsync() // 使用異步準備，避免阻塞
+            } catch (e: Exception) {
+                log("!!! FATAL ERROR in initMediaPlayer: ${e.message}")
+                XposedBridge.log(e)
+            }
         }
     }
 
-
-
     fun initializeTheStateAsWellAsThePlayer(){
+        log("Initializing state and player...")
         InfoProcesser.initStatus()
+        log("Status loaded: isLiveStreamingEnabled=${videoStatus?.isLiveStreamingEnabled}")
 
         if(ijkMediaPlayer == null){
             if(videoStatus?.isLiveStreamingEnabled == true){
@@ -132,99 +148,138 @@ object VideoPlayer {
     }
 
 
-    // 将surface传入进行播放
     private fun handleMediaPlayer(surface: Surface) {
+        // >>>>> 4. 為核心方法添加詳細的進入和狀態檢查日誌 <<<<<
+        log("handleMediaPlayer called for surface: $surface")
+        if (!surface.isValid) {
+            log("!!! ERROR: Surface is invalid, aborting playback.")
+            return
+        }
+
         try {
-            // 数据初始化
             InfoProcesser.initStatus()
+            log("Video status checked: isVideoEnable=${videoStatus?.isVideoEnable}, isLiveStreamingEnabled=${videoStatus?.isLiveStreamingEnabled}")
 
             videoStatus?.also { status ->
-                if (!status.isVideoEnable && !status.isLiveStreamingEnabled) return
+                if (!status.isVideoEnable && !status.isLiveStreamingEnabled) {
+                    log("Both video and live streaming are disabled. Returning.")
+                    releaseMediaPlayer()
+                    return
+                }
 
+                currentRunningSurface = surface
                 val volume = if (status.volume) 1F else 0F
 
                 when {
                     status.isLiveStreamingEnabled -> {
+                        log("Handling live streaming playback.")
                         ijkMediaPlayer?.let {
+                            log("IJK player exists. Setting volume and surface.")
                             it.setVolume(volume, volume)
                             it.setSurface(surface)
+                        } ?: run {
+                            log("IJK player is null. Re-initializing RTMP player.")
+                            initRTMPStreamPlayer()
+                            ijkMediaPlayer?.setSurface(surface)
                         }
                     }
                     else -> {
+                        log("Handling local video playback.")
                         mediaPlayer?.also {
                             if (it.isPlaying) {
+                                log("Local player exists and is playing. Setting volume and surface.")
                                 it.setVolume(volume, volume)
                                 it.setSurface(surface)
                             } else {
+                                log("Local player exists but is not playing. Re-initializing.")
                                 releaseMediaPlayer()
                                 initMediaPlayer(surface)
                             }
                         } ?: run {
+                            log("Local player is null. Initializing now.")
                             releaseMediaPlayer()
                             initMediaPlayer(surface)
                         }
                     }
                 }
-            }
+            } ?: log("Warning: videoStatus is null in handleMediaPlayer.")
         } catch (e: Exception) {
-            // 这里可以添加更详细的异常处理或日志记录
-            logError("MediaPlayer Error", e)
+            log("!!! FATAL ERROR in handleMediaPlayer: ${e.message}")
+            XposedBridge.log(e)
         }
     }
 
     private fun logError(message: String, e: Exception) {
-        // 实现日志记录逻辑，例如使用Android的Log.e函数
-        Log.e("MediaPlayerHandler", "$message: ${e.message}")
+        log("$message: ${e.message}")
+        XposedBridge.log(e)
     }
 
-
     fun releaseMediaPlayer(){
-        if(mediaPlayer == null)return
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
-        mediaPlayer = null
+        log("Releasing MediaPlayer...")
+        if(mediaPlayer == null) {
+            log("MediaPlayer is already null. No action taken.")
+            return
+        }
+        try {
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+        } catch (e: Exception) {
+            log("Error while releasing MediaPlayer: ${e.message}")
+        } finally {
+            mediaPlayer = null
+            log("MediaPlayer set to null.")
+        }
     }
 
     fun camera2Play() {
-        // 带name的surface
+        // >>>>> 4. 為核心方法添加詳細的進入和狀態檢查日誌 <<<<<
+        log("camera2Play() triggered!")
         original_preview_Surface?.let { surface ->
+            log("Found original_preview_Surface ($surface), passing to handleMediaPlayer.")
             handleMediaPlayer(surface)
-        }
+        } ?: log("Warning: original_preview_Surface is null in camera2Play.")
 
-        // name=null的surface
         c2_reader_Surfcae?.let { surface ->
+            log("Found c2_reader_Surfcae ($surface), passing to c2_reader_play.")
             c2_reader_play(surface)
         }
     }
 
     fun c1_camera_play() {
+        // >>>>> 4. 為核心方法添加詳細的進入和狀態檢查日誌 <<<<<
+        log("c1_camera_play() triggered!")
         if (original_c1_preview_SurfaceTexture != null) {
             original_preview_Surface = Surface(original_c1_preview_SurfaceTexture)
-            if(original_preview_Surface!!.isValid == true){
+            if(original_preview_Surface?.isValid == true){
+                log("Created Surface from original_c1_preview_SurfaceTexture, passing to handleMediaPlayer.")
                 handleMediaPlayer(original_preview_Surface!!)
+            } else {
+                log("Warning: Surface from original_c1_preview_SurfaceTexture is invalid.")
             }
         }
 
         if(oriHolder?.surface != null){
             original_preview_Surface = oriHolder?.surface
-            if(original_preview_Surface!!.isValid == true){
+            if(original_preview_Surface?.isValid == true){
+                log("Got Surface from oriHolder, passing to handleMediaPlayer.")
                 handleMediaPlayer(original_preview_Surface!!)
+            } else {
+                log("Warning: Surface from oriHolder is invalid.")
             }
-        }
-
-        c2_reader_Surfcae?.let { surface ->
-            c2_reader_play(surface)
         }
     }
 
     fun c2_reader_play(c2_reader_Surfcae:Surface){
+        log("c2_reader_play called for surface: $c2_reader_Surfcae")
         if(c2_reader_Surfcae == copyReaderSurface){
+            log("Surface is the same as last time, returning.")
             return
         }
 
         copyReaderSurface = c2_reader_Surfcae
 
         if(c2_hw_decode_obj != null){
+            log("Stopping previous c2_hw_decode_obj.")
             c2_hw_decode_obj!!.stopDecode()
             c2_hw_decode_obj = null
         }
@@ -233,11 +288,13 @@ object VideoPlayer {
         try {
             val videoUrl = "content://com.wangyiheng.vcamsx.videoprovider"
             val videoPathUri = Uri.parse(videoUrl)
+            log("Starting new c2_hw_decode_obj for surface.")
             c2_hw_decode_obj!!.setSaveFrames(OutputImageFormat.NV21)
             c2_hw_decode_obj!!.set_surface(c2_reader_Surfcae)
             c2_hw_decode_obj!!.decode(videoPathUri)
-        }catch (e:Exception){
-            Log.d("dbb",e.toString())
+        } catch (e:Exception){
+            log("!!! ERROR in c2_reader_play: ${e.message}")
+            XposedBridge.log(e)
         }
     }
 
