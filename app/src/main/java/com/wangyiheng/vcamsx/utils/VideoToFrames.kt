@@ -78,7 +78,7 @@ class VideoToFrames : Runnable {
             extractor = MediaExtractor().apply {
                 when (videoPath) {
                     is String -> setDataSource(videoPath) // 当参数是 String 时
-                    is Uri -> context?.let { setDataSource(it, videoPath, null) } // 当参数是 Uri 时
+                    is Uri -> context?.let { ctx -> setDataSource(ctx, videoPath, null) } // 当参数是 Uri 时
                     else -> throw IllegalArgumentException("Unsupported video path type")
                 }
             }
