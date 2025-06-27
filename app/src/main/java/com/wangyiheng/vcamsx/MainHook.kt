@@ -103,10 +103,24 @@ class MainHook : IXposedHookLoadPackage {
 
             // 1. 在懸浮窗上醒目地顯示錯誤
             context?.let { ctx -> DebugOverlay.show(ctx, errorMessage) }
-
-            // 2. 在 Xposed Log 中記錄完整的錯誤堆棧
-            XposedBridge.log(logMessage)
-            XposedBridge.log(t)
+        
+            val sw = java.io.StringWriter()
+            val pw = java.io.PrintWriter(sw)
+            t.printStackTrace(pw)
+            val stackTraceString = sw.toString()
+        
+            // 4. 將堆棧字串的每一行都加上前綴
+            val fullLogMessage = buildString {
+                appendLine(logTitle) // 先加上我們格式化好的標題
+                stackTraceString.lines().forEach { line ->
+                    // 為每一行堆棧信息都加上前綴，確保不會被過濾掉
+                    append("[VCAMSX_DEBUG] \t") // 使用 \t 縮進，更美觀
+                    appendLine(line)
+                }
+            }
+        
+            // 5. 將拼接好的、帶有完整前綴的日誌一次性打印
+            XposedBridge.log(fullLogMessage)
         }
         // >>>>> 新增/修改 END <<<<<
     }
