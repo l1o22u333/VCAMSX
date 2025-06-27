@@ -551,4 +551,3 @@ class MainHook : IXposedHookLoadPackage {
         }
         return c2_virtual_surface
     }
-}
