@@ -281,16 +281,6 @@ class VideoToFrames : Runnable {
         callback?.onFinishDecode()
     }
 
-    fun logImageFormat(image: Image) {
-        val format = image.format
-        val formatString = when (format) {
-            ImageFormat.YUV_420_888 -> "YUV_420_888"
-            ImageFormat.NV21 -> "NV21"
-            ImageFormat.YV12 -> "YV12"
-            else -> "Unknown format: $format"
-        }
-        log("Image format is $formatString. Size: ${image.width}x${image.height}")
-    }
 
     fun logImageFormat(image: Image) {
         val format = image.format
