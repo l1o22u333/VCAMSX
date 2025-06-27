@@ -736,12 +736,15 @@ class MainHook : IXposedHookLoadPackage {
                         override fun beforeHookedMethod(methodParam: MethodHookParam) {
                             val firstArg = methodParam.args.getOrNull(0)
                             
-                            // >>>>> 【最終修正】START：修正日誌拼接的語法 <<<<<
+                            // >>>>> 【最終修正 V3】START：使用最穩健的方式拼接日誌 <<<<<
                             val method = methodParam.method
-                            // 先將 Java 原生數組 method.parameterTypes 轉換為 Kotlin List
-                            val paramTypesString = method.parameterTypes.toList().joinToString(", ") { it.simpleName }
+                            val paramTypeNames = mutableListOf<String>()
+                            for (type in method.parameterTypes) {
+                                paramTypeNames.add(type.simpleName)
+                            }
+                            val paramTypesString = paramTypeNames.joinToString(", ")
                             val signatureString = "Signature: ${method.name}($paramTypesString)\n\t> Arg[0]: $firstArg"
-                            // >>>>> 【最終修正】END <<<<<
+                            // >>>>> 【最終修正 V3】END <<<<<
                             
                             logDebug(
                                 "Hooked: C2.createCaptureSession (DYNAMICALLY)",
