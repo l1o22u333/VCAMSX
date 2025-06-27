@@ -1,5 +1,7 @@
-package com.wangyiheng.vcamsx.utils // 或者您想放的任何包名下
+package com.wangyiheng.vcamsx.utils // 確保這個包名和您放置文件的目錄一致
 
+// ======================= 新增/補全的 import 語句 START =======================
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -7,8 +9,11 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.*
+import android.widget.FrameLayout
 import android.widget.TextView
 import de.robv.android.xposed.XposedBridge
+// ======================= 新增/補全的 import 語句 END =======================
+
 
 object DebugOverlay {
 
@@ -24,8 +29,10 @@ object DebugOverlay {
                 if (overlayView == null) {
                     // 只創建一次
                     windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                    val layoutInflater = LayoutInflater.from(context)
                     
+                    // 從上下文中獲取 LayoutInflater，而不是直接創建
+                    val layoutInflater = context.getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
+
                     // 創建懸浮窗視圖
                     overlayView = FrameLayout(context).apply {
                         setBackgroundColor(Color.parseColor("#80000000")) // 半透明黑色背景
@@ -34,6 +41,7 @@ object DebugOverlay {
                         setTextColor(Color.WHITE)
                         setTextSize(10f)
                         setPadding(10, 10, 10, 10)
+                        text = initialMessage // 初始時就設置文字
                     }
                     (overlayView as FrameLayout).addView(textView)
 
@@ -83,11 +91,12 @@ object DebugOverlay {
                     windowManager?.addView(overlayView, params)
                 }
 
-                // 更新文字
-                textView?.text = initialMessage
+                // 如果懸浮窗已存在，僅更新文字
+                updateText(initialMessage)
 
             } catch (e: Exception) {
                 XposedBridge.log("[VCAMSX Debug] Error showing overlay: ${e.message}")
+                e.printStackTrace(System.err) // 打印更詳細的錯誤到 logcat
             }
         }
     }
@@ -103,9 +112,15 @@ object DebugOverlay {
     fun hide() {
         mainHandler.post {
             if (overlayView != null && windowManager != null) {
-                windowManager?.removeView(overlayView)
-                overlayView = null
-                windowManager = null
+                try {
+                    windowManager?.removeView(overlayView)
+                } catch (e: Exception) {
+                    XposedBridge.log("[VCAMSX Debug] Error hiding overlay: ${e.message}")
+                } finally {
+                    overlayView = null
+                    windowManager = null
+                    textView = null
+                }
             }
         }
     }
