@@ -22,7 +22,7 @@ class VideoToFrames : Runnable {
     private var outputImageFormat: OutputImageFormat? = null
     private var videoFilePath: Any? = null
     private var childThread: Thread? = null
-    private var throwable: Throwable? = null // 定义 throwable 变量
+    private var throwable: Throwable? = null
     private val decodeColorFormat = MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible
     private var play_surf: Surface? = null
     private val DEFAULT_TIMEOUT_US: Long = 10000
@@ -31,7 +31,18 @@ class VideoToFrames : Runnable {
     private val COLOR_FormatI420 = 1
     private val COLOR_FormatNV21 = 2
     private val VERBOSE = false
+
+    // >>>>> 1. 新增統一的日誌輔助函數 <<<<<
+    private fun log(message: String) {
+        XposedBridge.log("[VCAMSX_DECODER_DEBUG] $message")
+    }
+    private fun logError(message: String, t: Throwable? = null) {
+        XposedBridge.log("[VCAMSX_DECODER_DEBUG] !!! ERROR: $message")
+        t?.let { XposedBridge.log(it) }
+    }
+
     fun stopDecode() {
+        log("stopDecode() called. Decoding will stop soon.")
         stopDecode = true
     }
 
@@ -42,89 +53,120 @@ class VideoToFrames : Runnable {
 
     @Throws(IOException::class)
     fun setSaveFrames(imageFormat: OutputImageFormat) {
+        log("Setting save format to: $imageFormat")
         outputImageFormat = imageFormat
     }
 
     fun set_surface(player_surface:Surface){
-        if(player_surface != null){
+        log("Setting output surface: $player_surface")
+        if(player_surface.isValid) {
+            log("Surface is valid.")
             play_surf = player_surface
+        } else {
+            logError("Provided surface is NOT valid!")
         }
     }
 
     fun decode(videoFilePath: Any) {
+        log("decode() called for path: $videoFilePath")
         this.videoFilePath = videoFilePath
         if (childThread == null) {
-            childThread = Thread(this, "decode").apply {
+            childThread = Thread(this, "VideoDecodeThread").apply {
                 start()
             }
-            throwable?.let { throw it }
+            throwable?.let {
+                logError("An error occurred during thread creation.", it)
+                throw it
+            }
+        } else {
+            log("Warning: decode() called but thread already exists.")
         }
     }
 
     override fun run() {
+        // >>>>> 2. 為 run 方法添加日誌 <<<<<
+        log("Decoding thread started. Let's begin...")
         try {
-            Log.d("vcamsxtoast","------开始解码------")
-            videoFilePath?.let { videoDecode(it) }
+            videoFilePath?.let { videoDecode(it) } ?: logError("videoFilePath is null in run().")
         } catch (t: Throwable) {
+            logError("Unhandled throwable in run()", t)
             throwable = t
+        } finally {
+            log("Decoding thread finished.")
         }
     }
 
     private fun videoDecode(videoPath: Any) {
         var extractor: MediaExtractor? = null
         var decoder: MediaCodec? = null
-
+        log("videoDecode started.")
         try {
             extractor = MediaExtractor().apply {
                 when (videoPath) {
-                    is String -> setDataSource(videoPath) // 当参数是 String 时
-                    is Uri -> context?.let { ctx -> setDataSource(ctx, videoPath, null) } // 当参数是 Uri 时
+                    is String -> {
+                        log("Setting data source from String path.")
+                        setDataSource(videoPath)
+                    }
+                    is Uri -> {
+                        log("Setting data source from Uri.")
+                        context?.let { ctx -> setDataSource(ctx, videoPath, null) }
+                    }
                     else -> throw IllegalArgumentException("Unsupported video path type")
                 }
             }
             val trackIndex = selectTrack(extractor)
             if (trackIndex < 0) {
-                XposedBridge.log("&#8203;``【oaicite:5】``&#8203;&#8203;``【oaicite:4】``&#8203;No video track found in $videoFilePath")
+                throw RuntimeException("No video track found in $videoFilePath")
             }
             extractor.selectTrack(trackIndex)
             val mediaFormat = extractor.getTrackFormat(trackIndex)
+            // >>>>> 3. 打印詳細的影片格式資訊 <<<<<
+            log("Video format found: ${mediaFormat.toString()}")
+
             val mime = mediaFormat.getString(MediaFormat.KEY_MIME)
+            log("Video MIME type: $mime")
             decoder = MediaCodec.createDecoderByType(mime!!)
+            log("MediaCodec decoder created for $mime.")
+
             showSupportedColorFormat(decoder.codecInfo.getCapabilitiesForType(mime))
             if (isColorFormatSupported(decodeColorFormat, decoder.codecInfo.getCapabilitiesForType(mime))) {
                 mediaFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, decodeColorFormat)
-                XposedBridge.log("&#8203;``【oaicite:3】``&#8203;&#8203;``【oaicite:2】``&#8203;set decode color format to type $decodeColorFormat")
+                log("Successfully set decode color format to: $decodeColorFormat (YUV420Flexible)")
             } else {
-                Log.i(ContentValues.TAG, "unable to set decode color format, color format type $decodeColorFormat not supported")
-                XposedBridge.log("&#8203;``【oaicite:1】``&#8203;&#8203;``【oaicite:0】``&#8203;unable to set decode color format, color format type $decodeColorFormat not supported")
+                log("Warning: YUV420Flexible not supported, using default color format.")
             }
-            decodeFramesToImage(decoder, extractor, mediaFormat)
-            decoder.stop()
-            while (!stopDecode) {
-                extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+
+            // Loop a few times for testing, for example 5 times.
+            var loopCount = 0
+            while (!stopDecode && loopCount < 500) { // 加一個循環次數限制，避免無限循環
+                log("Starting decoding loop #${loopCount + 1}")
                 decodeFramesToImage(decoder, extractor, mediaFormat)
-                decoder.stop()
+                extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+                log("Seeked to beginning for next loop.")
+                loopCount++
             }
+            log("Decoding loops finished.")
+
         } catch (e: Exception) {
-            // Handle exceptions
+            logError("Exception in videoDecode", e)
         } finally {
-            if(decoder != null) {
-                decoder.stop()
-                decoder.release()
-                decoder = null
-            }
-            if(extractor != null) {
-                extractor.release()
-                extractor = null
-            }
+            log("Releasing videoDecode resources...")
+            decoder?.stop()
+            decoder?.release()
+            extractor?.release()
+            log("videoDecode resources released.")
         }
     }
+
     private fun selectTrack(extractor: MediaExtractor): Int {
         val numTracks = extractor.trackCount
+        log("Found $numTracks tracks.")
         for (i in 0 until numTracks) {
             val format = extractor.getTrackFormat(i)
             val mime = format.getString(MediaFormat.KEY_MIME)
+            log("Track #$i: $mime")
             if (mime!!.startsWith("video/")) {
+                log("Video track selected at index $i.")
                 return i
             }
         }
@@ -132,13 +174,11 @@ class VideoToFrames : Runnable {
     }
 
     private fun showSupportedColorFormat(caps: MediaCodecInfo.CodecCapabilities) {
-        for (c in caps.colorFormats) {
-            print("$c\t")
-        }
-        println()
+        val supportedFormats = caps.colorFormats.joinToString(", ")
+        log("Supported color formats: [$supportedFormats]")
     }
 
-    fun isColorFormatSupported(colorFormat: Int, caps: MediaCodecInfo.CodecCapabilities): Boolean {
+    private fun isColorFormatSupported(colorFormat: Int, caps: MediaCodecInfo.CodecCapabilities): Boolean {
         return caps.colorFormats.any { it == colorFormat }
     }
 
@@ -146,71 +186,110 @@ class VideoToFrames : Runnable {
         var isFirst = false
         var startWhen: Long = 0
         val info = MediaCodec.BufferInfo()
+        log("Configuring decoder with format and surface ($play_surf)...")
         decoder.configure(mediaFormat, play_surf, null, 0)
+        decoder.start()
+        log("Decoder started.")
         var sawInputEOS = false
         var sawOutputEOS = false
-        decoder.start()
         var outputFrameCount = 0
 
         while (!sawOutputEOS && !stopDecode) {
             if (!sawInputEOS) {
-                val inputBufferId = decoder.dequeueInputBuffer(DEFAULT_TIMEOUT_US)
-                if (inputBufferId >= 0) {
-                    val inputBuffer = decoder.getInputBuffer(inputBufferId)
-                    val sampleSize = extractor.readSampleData(inputBuffer!!, 0)
-                    if (sampleSize < 0) {
-                        decoder.queueInputBuffer(inputBufferId, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                        sawInputEOS = true
-                    } else {
-                        val presentationTimeUs = extractor.sampleTime
-                        decoder.queueInputBuffer(inputBufferId, 0, sampleSize, presentationTimeUs, 0)
-                        extractor.advance()
+                try {
+                    val inputBufferId = decoder.dequeueInputBuffer(DEFAULT_TIMEOUT_US)
+                    if (inputBufferId >= 0) {
+                        val inputBuffer = decoder.getInputBuffer(inputBufferId)
+                        val sampleSize = extractor.readSampleData(inputBuffer!!, 0)
+                        if (sampleSize < 0) {
+                            log("Input stream ended. Queuing EOS.")
+                            decoder.queueInputBuffer(inputBufferId, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            sawInputEOS = true
+                        } else {
+                            val presentationTimeUs = extractor.sampleTime
+                            decoder.queueInputBuffer(inputBufferId, 0, sampleSize, presentationTimeUs, 0)
+                            extractor.advance()
+                        }
                     }
+                } catch (e: Exception) {
+                    logError("Error during input processing", e)
+                    sawInputEOS = true // Abort on error
                 }
             }
 
             val outputBufferId = decoder.dequeueOutputBuffer(info, DEFAULT_TIMEOUT_US)
             if (outputBufferId >= 0) {
                 if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                    log("Output stream ended.")
                     sawOutputEOS = true
                 }
                 val doRender = info.size != 0
+                // >>>>> 4. 在渲染循環中加入詳細日誌 <<<<<
+                log("Frame #$outputFrameCount: Dequeued output buffer $outputBufferId. Size: ${info.size}, Render: $doRender")
+
                 if (doRender) {
                     outputFrameCount++
-                    callback?.onDecodeFrame(outputFrameCount)
 
                     if (!isFirst) {
                         startWhen = System.currentTimeMillis()
                         isFirst = true
                     }
-                    if (play_surf == null) {
+
+                    // 檢查是否有預覽 surface，如果有，數據會被直接渲染上去
+                    if (play_surf != null) {
+                        log("Frame #$outputFrameCount is being rendered to surface.")
+                    } else {
+                        // 如果沒有 surface，我們手動處理數據幀
+                        log("Frame #$outputFrameCount is being processed manually (no surface).")
                         val image = decoder.getOutputImage(outputBufferId)
-                        val buffer = image!!.planes[0].buffer
-                        val arr = ByteArray(buffer.remaining())
-                        buffer.get(arr)
-                        mQueue?.put(arr)
-
-                        if (outputImageFormat != null) {
-//                            MainHook.data_buffer  =bitmapToYUV( imageToBitmap(image))
-                            MainHook.data_buffer = getDataFromImage(image)
+                        if (image != null) {
+                            logImageFormat(image) // 打印圖像格式
+                            if (outputImageFormat != null) {
+                                log("Converting image to byte array (for data_buffer).")
+                                MainHook.data_buffer = getDataFromImage(image)
+                                log("data_buffer updated. Size: ${MainHook.data_buffer.size}")
+                            }
+                            image.close()
+                        } else {
+                            log("Warning: decoder.getOutputImage($outputBufferId) returned null.")
                         }
-                        image.close()
                     }
-
-                    val sleepTime = info.presentationTimeUs / 1000 - (System.currentTimeMillis() - startWhen)
+                    
+                    // 根據時間戳計算延遲
+                    val sleepTime = (info.presentationTimeUs / 1000) - (System.currentTimeMillis() - startWhen)
                     if (sleepTime > 0) {
                         try {
                             Thread.sleep(sleepTime)
                         } catch (e: InterruptedException) {
-                            XposedBridge.log("&#8203;``【oaicite:1】``&#8203;" + e.toString())
-                            XposedBridge.log("&#8203;``【oaicite:0】``&#8203;线程延迟出错")
+                            log("Thread sleep interrupted.")
                         }
                     }
+
+                    // 釋放緩衝區，如果是渲染到 surface，這一步會將畫面顯示出來
                     decoder.releaseOutputBuffer(outputBufferId, true)
+                    log("Frame #$outputFrameCount released to render.")
+                } else {
+                    // 如果 doRender 為 false，也要釋放 buffer
+                    decoder.releaseOutputBuffer(outputBufferId, false)
                 }
+            } else if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                log("Output format changed: ${decoder.outputFormat}")
             }
         }
+        decoder.stop()
+        log("Decoder stopped for this loop.")
         callback?.onFinishDecode()
+    }
+
+    fun logImageFormat(image: Image) {
+        val format = image.format
+        val formatString = when (format) {
+            ImageFormat.YUV_420_888 -> "YUV_420_888"
+            ImageFormat.NV21 -> "NV21"
+            ImageFormat.YV12 -> "YV12"
+            else -> "Unknown format: $format"
+        }
+        log("Image format is $formatString. Size: ${image.width}x${image.height}")
     }
 
     fun logImageFormat(image: Image) {
