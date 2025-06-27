@@ -491,6 +491,80 @@ class MainHook : IXposedHookLoadPackage {
             logError(t, "Hooking getCameraCharacteristics", lpparam)
         }
         // >>>>> 【終極偵察包 - 6】END <<<<<
+        // >>>>> 【精準打擊 - 7】START：Hook 權限請求 <<<<<
+        try {
+            XposedHelpers.findAndHookMethod(
+                "android.app.Activity", lpparam.classLoader, "requestPermissions",
+                Array<String>::class.java, // permissions
+                Int::class.java,          // requestCode
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        val permissions = param.args[0] as Array<String>
+                        // 檢查請求的權限中是否包含相機權限
+                        if (permissions.contains("android.permission.CAMERA")) {
+                            logDebug(
+                                "Hooked: Activity.requestPermissions (FOR CAMERA)",
+                                "Activity: ${param.thisObject::class.java.name}\n\t> Permissions: ${permissions.contentToString()}\n\t> StackTrace:\n${android.util.Log.getStackTraceString(Throwable())}",
+                                true, lpparam
+                            )
+                        }
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logError(t, "Hooking requestPermissions", lpparam)
+        }
+        // >>>>> 【精準打擊 - 7】END <<<<<
+        // >>>>> 【精準打擊 - 8】START：Hook MediaRecorder 連接相機 <<<<<
+        try {
+            XposedHelpers.findAndHookMethod(
+                "android.media.MediaRecorder", lpparam.classLoader, "setCamera",
+                Camera::class.java,
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        val cameraObj = param.args[0] as Camera
+                        logDebug(
+                            "Hooked: MediaRecorder.setCamera",
+                            "MediaRecorder: ${param.thisObject}\n\t> Camera Obj: $cameraObj\n\t> StackTrace:\n${android.util.Log.getStackTraceString(Throwable())}",
+                            true, lpparam
+                        )
+                        // 在這裡，我們已經捕獲到了 Camera 對象！
+                        // 可以在這裡執行我們自己的替換邏輯，或者根據堆棧分析是誰調用了它。
+                        // 例如: origin_preview_camera = cameraObj;
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logError(t, "Hooking MediaRecorder.setCamera", lpparam)
+        }
+        // >>>>> 【精準打擊 - 8】END <<<<<
+        // >>>>> 【精準打擊 - 9】START：Hook 底層 EGL 表面創建 <<<<<
+        try {
+            XposedHelpers.findAndHookMethod(
+                "android.opengl.EGL14", lpparam.classLoader, "eglCreateWindowSurface",
+                android.opengl.EGLDisplay::class.java, // dpy
+                android.opengl.EGLConfig::class.java,  // config
+                Any::class.java,                       // win (可能是 Surface, SurfaceHolder, SurfaceTexture)
+                IntArray::class.java,                  // attrib_list
+                Int::class.java,                       // offset
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        val windowObject = param.args[2]
+                        // 我們只關心與 Surface 相關的調用
+                        if (windowObject is Surface || windowObject is SurfaceHolder || windowObject is SurfaceTexture) {
+                            logDebug(
+                                "Hooked: EGL14.eglCreateWindowSurface",
+                                "Window Object Type: ${windowObject::class.java.simpleName}\n\t> Object: $windowObject\n\t> StackTrace:\n${android.util.Log.getStackTraceString(Throwable())}",
+                                true, lpparam
+                            )
+                        }
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logError(t, "Hooking eglCreateWindowSurface", lpparam)
+        }
+        // >>>>> 【精準打擊 - 9】END <<<<<
         try {
             XposedHelpers.findAndHookConstructor(
                 "android.graphics.SurfaceTexture", lpparam.classLoader,
