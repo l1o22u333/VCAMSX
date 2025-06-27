@@ -93,37 +93,39 @@ class MainHook : IXposedHookLoadPackage {
          * @param lpparam 可選的LoadPackageParam
          */
         private fun logError(t: Throwable, fromFunction: String, lpparam: XC_LoadPackage.LoadPackageParam?) {
-            val errorMessage = "!!! ERROR in $fromFunction: ${t.javaClass.simpleName}"
-
-            val logMessage = buildString {
+            // 1. 準備一個簡短的錯誤資訊，用於懸浮窗顯示
+            val errorMessageForOverlay = "!!! ERROR in $fromFunction: ${t.javaClass.simpleName}"
+        
+            // 2. 在懸浮窗上醒目地顯示簡短的錯誤
+            context?.let { ctx -> DebugOverlay.show(ctx, errorMessageForOverlay) }
+        
+            // 3. 【修正點】定義 logTitle，這是日誌的第一行標題
+            val logTitle = buildString {
                 append("[VCAMSX_DEBUG] ")
                 if (lpparam != null) append("[${lpparam.processName}] ")
-                append(errorMessage)
+                // 在詳細日誌中，我們可以包含更完整的錯誤訊息
+                append("!!! ERROR in $fromFunction: ${t.javaClass.simpleName} - ${t.message}")
             }
-
-            // 1. 在懸浮窗上醒目地顯示錯誤
-            context?.let { ctx -> DebugOverlay.show(ctx, errorMessage) }
         
+            // 4. 將異常堆疊轉換為字串
             val sw = java.io.StringWriter()
             val pw = java.io.PrintWriter(sw)
             t.printStackTrace(pw)
             val stackTraceString = sw.toString()
         
-            // 4. 將堆棧字串的每一行都加上前綴
+            // 5. 組合標題和帶有前綴的堆疊資訊，成為一個完整的日誌字串
             val fullLogMessage = buildString {
-                appendLine(logTitle) // 先加上我們格式化好的標題
+                appendLine(logTitle) // <-- 現在 logTitle 是已定義的
                 stackTraceString.lines().forEach { line ->
-                    // 為每一行堆棧信息都加上前綴，確保不會被過濾掉
-                    append("[VCAMSX_DEBUG] \t") // 使用 \t 縮進，更美觀
+                    // 為了避免過濾掉任何資訊，即使是空行，我們也給它加上前綴
+                    append("[VCAMSX_DEBUG] \t") // 使用 \t 縮進，讓堆疊資訊在視覺上更清晰
                     appendLine(line)
                 }
             }
         
-            // 5. 將拼接好的、帶有完整前綴的日誌一次性打印
+            // 6. 將拼接好的、帶有完整前綴的日誌一次性打印
             XposedBridge.log(fullLogMessage)
         }
-        // >>>>> 新增/修改 END <<<<<
-    }
 
     private var c2_virtual_surface: Surface? = null
     private var c2_state_callback_class: Class<*>? = null
