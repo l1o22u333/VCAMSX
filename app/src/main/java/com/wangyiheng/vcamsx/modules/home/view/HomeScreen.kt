@@ -2,6 +2,7 @@ import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -57,7 +58,22 @@ fun HomeScreen() {
             }
         }
     )
-
+    // ======================= 2. 【新增】處理權限請求回調的 Launcher =======================
+    val overlayPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        // 當用戶從系統設置頁返回時，會執行這裡的程式碼
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(context)) {
+                // 如果用戶沒有開啟權限
+                Toast.makeText(context, "懸浮窗權限未開啟，懸浮窗調試功能將不可用", Toast.LENGTH_LONG).show()
+            } else {
+                // 如果用戶成功開啟了權限
+                Toast.makeText(context, "懸浮窗權限已獲取！", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    // ===================================================================================
     Card(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
         val buttonModifier = Modifier
             .fillMaxWidth()
@@ -76,23 +92,6 @@ fun HomeScreen() {
                 }
             ) {
                 Text("保存RTMP链接")
-            }
-            Button(
-                onClick = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        if (!Settings.canDrawOverlays(context)) {
-                            val intent = Intent(
-                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:${context.packageName}")
-                            )
-                            overlayPermissionLauncher.launch(intent)
-                        } else {
-                            Toast.makeText(context, "權限已開啟，無需重複操作", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-            ) {
-                Text("開啟懸浮窗調試權限")
             }
             Button(
                 modifier = buttonModifier,
@@ -121,7 +120,34 @@ fun HomeScreen() {
             ) {
                 Text("查看直播推流")
             }
-
+            // ======================= 3. 【新增】添加請求權限的按鈕 =======================
+            Button(
+                modifier = buttonModifier,
+                onClick = {
+                    // 只有 Android 6.0 (M) 以上版本才有懸浮窗權限這個概念
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        // 檢查是否還沒有權限
+                        if (!Settings.canDrawOverlays(context)) {
+                            // 創建一個意圖(Intent)，跳轉到指定 App 的懸浮窗權限設置頁
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:${context.packageName}")
+                            )
+                            // 啟動這個意圖，等待用戶操作後返回
+                            overlayPermissionLauncher.launch(intent)
+                        } else {
+                            // 如果已經有權限了，就提示用戶
+                            Toast.makeText(context, "權限已開啟，無需重複操作", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        // 對於老舊版本，此功能預設開啟
+                        Toast.makeText(context, "您的系統版本較低，無需手動開啟此權限", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            ) {
+                Text("開啟懸浮窗調試權限")
+            }
+            // ===========================================================================
             SettingRow(
                 label = "视频开关",
                 checkedState = homeController.isVideoEnabled,
