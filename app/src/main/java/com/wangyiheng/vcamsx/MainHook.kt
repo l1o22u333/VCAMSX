@@ -102,7 +102,7 @@ class MainHook : IXposedHookLoadPackage {
             }
 
             // 1. 在懸浮窗上醒目地顯示錯誤
-            context?.let { DebugOverlay.show(it, errorMessage) }
+            context?.let { ctx -> DebugOverlay.show(ctx, errorMessage) }
 
             // 2. 在 Xposed Log 中記錄完整的錯誤堆棧
             XposedBridge.log(logMessage)
