@@ -734,15 +734,14 @@ class MainHook : IXposedHookLoadPackage {
                     // 3. 創建一個可重用的 Hook 回調
                     val captureSessionHook = object : XC_MethodHook() {
                         override fun beforeHookedMethod(methodParam: MethodHookParam) {
-                            // 獲取第一個參數，它通常是 List<Surface> 或 SessionConfiguration
                             val firstArg = methodParam.args.getOrNull(0)
                             
-                            // >>>>> 【修正】START：修正日誌拼接的語法 <<<<<
+                            // >>>>> 【最終修正】START：修正日誌拼接的語法 <<<<<
                             val method = methodParam.method
-                            // 將 Java 的 Class<?>[] 數組安全地轉換為 Kotlin List<String>
-                            val paramTypesString = method.parameterTypes.map { clazz -> clazz.simpleName }.joinToString(", ")
+                            // 先將 Java 原生數組 method.parameterTypes 轉換為 Kotlin List
+                            val paramTypesString = method.parameterTypes.toList().joinToString(", ") { it.simpleName }
                             val signatureString = "Signature: ${method.name}($paramTypesString)\n\t> Arg[0]: $firstArg"
-                            // >>>>> 【修正】END <<<<<
+                            // >>>>> 【最終修正】END <<<<<
                             
                             logDebug(
                                 "Hooked: C2.createCaptureSession (DYNAMICALLY)",
@@ -751,11 +750,9 @@ class MainHook : IXposedHookLoadPackage {
                             )
                             try {
                                 when (firstArg) {
-                                    // 情況一：參數是 SessionConfiguration
                                     is SessionConfiguration -> {
                                         val originalConfig = firstArg
                                         val outputConfig = OutputConfiguration(c2_virtual_surface!!)
-                                        // 注意：在真實替換時，需要保留原始的回調和執行器
                                         val fakeConfig = SessionConfiguration(
                                             originalConfig.sessionType,
                                             listOf(outputConfig),
@@ -765,12 +762,10 @@ class MainHook : IXposedHookLoadPackage {
                                         methodParam.args[0] = fakeConfig
                                         logDebug("Replaced SessionConfiguration with fake config", null, false, lpparam)
                                     }
-                                    // 情況二：參數是 List of Surfaces
                                     is List<*> -> {
                                         methodParam.args[0] = listOf(c2_virtual_surface)
                                         logDebug("Replaced List<Surface> with fake surface list", null, false, lpparam)
                                     }
-                                    // 其他情況暫不處理，但已記錄日誌
                                     else -> {
                                         logDebug("Unsupported createCaptureSession variant found", "First arg type: ${firstArg?.javaClass?.name}", false, lpparam)
                                     }
