@@ -133,7 +133,7 @@ class MainHook : IXposedHookLoadPackage {
     // Xposed模块中
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         // >>>>> 新增/修改 START <<<<<
-        logDebug("Module loading", "Package: ${lpparam.packageName}", false, lpparam)
+        logDebug("V1.1 Module loading", "Package: ${lpparam.packageName}", false, lpparam)
         // >>>>> 新增/修改 END <<<<<
 
         if(lpparam.packageName == "com.wangyiheng.vcamsx"){
@@ -342,6 +342,121 @@ class MainHook : IXposedHookLoadPackage {
                     // >>>>> 新增/修改 END <<<<<
                 }
             })
+        // >>>>> 【終極偵察包 - 1】START：Hook 相機資訊查詢 <<<<<
+        try {
+            XposedHelpers.findAndHookMethod("android.hardware.Camera", lpparam.classLoader, "getNumberOfCameras",
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        logDebug(
+                            "Hooked: Camera.getNumberOfCameras (Static)",
+                            "Result: ${param.result}\n\t> StackTrace:\n${android.util.Log.getStackTraceString(Throwable())}",
+                            true, lpparam
+                        )
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logError(t, "Hooking getNumberOfCameras", lpparam)
+        }
+        // >>>>> 【終極偵察包 - 2】START：Hook Camera.open 的所有版本 <<<<<
+        try {
+            XposedHelpers.findAndHookMethod("android.hardware.Camera", lpparam.classLoader, "open",
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        logDebug(
+                            "Hooked: Camera.open() - No-Arg Version",
+                            "Return (Camera obj): ${param.result}\n\t> StackTrace:\n${android.util.Log.getStackTraceString(Throwable())}",
+                            true, lpparam
+                        )
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logError(t, "Hooking Camera.open()", lpparam)
+        }
+        
+        try {
+            XposedHelpers.findAndHookMethod("android.hardware.Camera", lpparam.classLoader, "open",
+                Int::class.java,
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        logDebug(
+                            "Hooked: Camera.open(int) - Int-Arg Version",
+                            "CameraId: ${param.args[0]}, Return (Camera obj): ${param.result}\n\t> StackTrace:\n${android.util.Log.getStackTraceString(Throwable())}",
+                            true, lpparam
+                        )
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logError(t, "Hooking Camera.open(int)", lpparam)
+        }
+        // >>>>> 【終極偵察包 - 2】END <<<<<
+        // >>>>> 【終極偵察包 - 3】START：Hook Surface 的構造函數 <<<<<
+        try {
+            XposedHelpers.findAndHookConstructor(
+                "android.view.Surface", lpparam.classLoader,
+                SurfaceTexture::class.java,
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        logDebug(
+                            "Hooked: Surface CONSTRUCTOR (from SurfaceTexture)",
+                            "Input ST: ${param.args[0]}\n\t> StackTrace:\n${android.util.Log.getStackTraceString(Throwable())}",
+                            true, lpparam
+                        )
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logError(t, "Hooking Surface(SurfaceTexture)", lpparam)
+        }
+        // >>>>> 【終極偵察包 - 3】END <<<<<
+        // >>>>> 【終極偵察包 - 4】START：Hook Camera 與系統服務的連接點 <<<<<
+        try {
+            // 這個方法在 Camera 類內部，是與底層服務通信的關鍵
+            // public static Camera open(int cameraId) {
+            //     ...
+            //     c = new Camera(cameraId);
+            //     c.connect(c, cameraId, c.mClient, c.mAppContext);  <-- 我們在 Hook Camera 的構造函數後，再 Hook connect
+            //     ...
+            // }
+            XposedHelpers.findAndHookMethod("android.hardware.Camera", lpparam.classLoader, "connect",
+                Camera::class.java, Int::class.java, String::class.java, Context::class.java,
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        logDebug(
+                            "Hooked: Camera.connect (ULTRA-LOW LEVEL)",
+                            "CameraId: ${param.args[1]}, Calling Pkg: ${param.args[2]}\n\t> StackTrace:\n${android.util.Log.getStackTraceString(Throwable())}",
+                            true, lpparam
+                        )
+                    }
+                }
+            )
+        } catch (e: NoSuchMethodError) {
+             // 在某些極高或極低的Android版本上，這個方法的簽名可能不同，所以要捕獲NoSuchMethodError
+             logDebug("Camera.connect with 4 args not found, trying alternatives...", null, false, lpparam)
+        } catch (t: Throwable) {
+            logError(t, "Hooking Camera.connect", lpparam)
+        }
+        // >>>>> 【終極偵察包 - 4】END <<<<<
+        try {
+            XposedHelpers.findAndHookMethod("android.hardware.Camera", lpparam.classLoader, "getCameraInfo",
+                Int::class.java, Camera.CameraInfo::class.java,
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        logDebug(
+                            "Hooked: Camera.getCameraInfo (Static)",
+                            "CameraId: ${param.args[0]}\n\t> StackTrace:\n${android.util.Log.getStackTraceString(Throwable())}",
+                            true, lpparam
+                        )
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logError(t, "Hooking getCameraInfo", lpparam)
+        }
+        // >>>>> 【終極偵察包 - 1】END <<<<<
+		
         try {
             XposedHelpers.findAndHookConstructor(
                 "android.graphics.SurfaceTexture", lpparam.classLoader,
