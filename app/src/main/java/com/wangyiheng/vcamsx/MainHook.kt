@@ -344,6 +344,48 @@ class MainHook : IXposedHookLoadPackage {
             })
         // >>>>> 【終極偵察包 - 1】START：Hook 相機資訊查詢 <<<<<
         try {
+            XposedHelpers.findAndHookMethod(
+                "android.hardware.camera2.CameraManager", lpparam.classLoader, "openCamera",
+                String::class.java,                     // cameraId
+                java.util.concurrent.Executor::class.java, // executor
+                CameraDevice.StateCallback::class.java,  // callback
+                object : XC_MethodHook() {
+                    @Throws(Throwable::class)
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        // 我們捕獲到了 Executor 版本的 openCamera 調用！
+                        logDebug(
+                            "Hooked: C2.openCamera (Executor Version)",
+                            "ID: ${param.args[0]}, Executor: ${param.args[1]}, Callback: ${param.args[2]}",
+                            true, lpparam
+                        )
+                        try {
+                            // 後續的邏輯和 Handler 版本完全一樣
+                            if (param.args[2] == null) {
+                                return
+                            }
+                            if (param.args[2] == c2_state_callback) {
+                                return
+                            }
+                            c2_state_callback = param.args[2] as CameraDevice.StateCallback
+                            c2_state_callback_class = param.args[2]?.javaClass
+                            
+                            logDebug("Original C2 StateCallback saved (from Executor version)", "Class: ${c2_state_callback_class?.name}", false, lpparam)
+                            
+                            // 調用我們統一的後續處理函數
+                            process_camera2_init(c2_state_callback_class as Class<Any>?, lpparam)
+                            
+                        } catch (t: Throwable) {
+                            logError(t, "openCamera(Executor)", lpparam)
+                        }
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            // 如果這個版本的 Hook 找不到，也不要緊，只是記錄一下
+            logError(t, "Hooking openCamera(Executor)", lpparam)
+        }
+        // >>>>> 【修正策略】END <<<<<
+        try {
             XposedHelpers.findAndHookMethod("android.hardware.Camera", lpparam.classLoader, "getNumberOfCameras",
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
