@@ -711,100 +711,101 @@ class MainHook : IXposedHookLoadPackage {
     }
 
     private fun process_camera2_init(c2StateCallbackClass: Class<Any>?, lpparam: XC_LoadPackage.LoadPackageParam) {
-        logDebug("Executing process_camera2_init", "Class: ${c2StateCallbackClass?.name}", false, lpparam)
+        logDebug("Executing process_camera2_init", "Target Class: ${c2StateCallbackClass?.name}", false, lpparam)
+
+        // ------------------------------------------------------------------------------------
+        // 策略改變：不再 onOpened 裡 Hook createCaptureSession，而是在這裡直接 Hook CameraDevice 類
+        // 這樣無論 App 什麼時候調用 createCaptureSession，我們都能捕獲到。
+        // ------------------------------------------------------------------------------------
+        val cameraDeviceClassName = "android.hardware.camera2.CameraDevice"
+        try {
+            // Hook createCaptureSession (List 版本)
+            XposedHelpers.findAndHookMethod(cameraDeviceClassName, lpparam.classLoader, "createCaptureSession",
+                List::class.java, CameraCaptureSession.StateCallback::class.java, Handler::class.java,
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        logDebug("Hooked: C2.createCaptureSession (List)", "Surfaces: ${param.args[0]}", true, lpparam)
+                        try {
+                            if (param.args[0] != null) {
+                                param.args[0] = listOf(c2_virtual_surface)
+                                logDebug("Replaced with virtual surface", null, false, lpparam)
+                            }
+                        } catch (t: Throwable) {
+                            logError(t, "createCaptureSession(List)", lpparam)
+                        }
+                    }
+                }
+            )
+
+            // Hook createCaptureSession (SessionConfiguration 版本)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                XposedHelpers.findAndHookMethod(cameraDeviceClassName, lpparam.classLoader, "createCaptureSession",
+                    SessionConfiguration::class.java,
+                    object : XC_MethodHook() {
+                        override fun beforeHookedMethod(param: MethodHookParam) {
+                            logDebug("Hooked: C2.createCaptureSession (Config)", "Config: ${param.args[0]}", true, lpparam)
+                            try {
+                                if (param.args[0] != null) {
+                                    val originalConfig = param.args[0] as SessionConfiguration
+                                    val outputConfig = OutputConfiguration(c2_virtual_surface!!)
+                                    val fakeConfig = SessionConfiguration(
+                                        originalConfig.sessionType,
+                                        listOf(outputConfig),
+                                        originalConfig.executor,
+                                        originalConfig.stateCallback
+                                    )
+                                    param.args[0] = fakeConfig
+                                    logDebug("Replaced with fake SessionConfiguration", null, false, lpparam)
+                                }
+                            } catch (t: Throwable) {
+                                logError(t, "createCaptureSession(Config)", lpparam)
+                            }
+                        }
+                    }
+                )
+            }
+        } catch (t: Throwable) {
+            logError(t, "Hooking createCaptureSession globally", lpparam)
+        }
+
+        // ------------------------------------------------------------------------------------
+        // onOpened 的職責被簡化：只負責創建我們的虛擬 Surface
+        // ------------------------------------------------------------------------------------
         XposedHelpers.findAndHookMethod(c2StateCallbackClass, "onOpened", CameraDevice::class.java, object : XC_MethodHook() {
-            @Throws(Throwable::class)
             override fun beforeHookedMethod(param: MethodHookParam) {
-                // >>>>> 新增/修改 START <<<<<
                 logDebug("Hooked: C2.onOpened", "Device: ${param.args[0]}", true, lpparam)
                 try {
-                // >>>>> 新增/修改 END <<<<<
                     needRecreate = true
                     createVirtualSurface()
+                    logDebug("Virtual surface is ready", "Surface: $c2_virtual_surface", false, lpparam)
 
                     c2_reader_Surfcae = null
                     original_preview_Surface = null
-
-                    if(lpparam.packageName != "com.ss.android.ugc.aweme" ){
-                        XposedHelpers.findAndHookMethod(param.args[0].javaClass, "createCaptureSession", List::class.java, CameraCaptureSession.StateCallback::class.java, Handler::class.java, object : XC_MethodHook() {
-                            @Throws(Throwable::class)
-                            override fun beforeHookedMethod(paramd: MethodHookParam) {
-                                // >>>>> 新增/修改 START <<<<<
-                                logDebug("Hooked: C2.createCaptureSession (List)", "Surfaces: ${paramd.args[0]}", true, lpparam)
-                                try {
-                                // >>>>> 新增/修改 END <<<<<
-                                    if (paramd.args[0] != null) {
-                                        paramd.args[0] = listOf(c2_virtual_surface)
-                                        logDebug("Replaced with virtual surface", null, false, lpparam)
-                                    }
-                                // >>>>> 新增/修改 START <<<<<
-                                } catch(t: Throwable) {
-                                    logError(t, "createCaptureSession(List)", lpparam)
-                                }
-                                // >>>>> 新增/修改 END <<<<<
-                            }
-                        })
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            XposedHelpers.findAndHookMethod(param.args[0].javaClass, "createCaptureSession",
-                                SessionConfiguration::class.java, object : XC_MethodHook() {
-                                    @Throws(Throwable::class)
-                                    override fun beforeHookedMethod(param: MethodHookParam) {
-                                        // >>>>> 新增/修改 START <<<<<
-                                        logDebug("Hooked: C2.createCaptureSession (Config)", "Config: ${param.args[0]}", true, lpparam)
-                                        try {
-                                        // >>>>> 新增/修改 END <<<<<
-                                            super.beforeHookedMethod(param)
-                                            if (param.args[0] != null) {
-                                                sessionConfiguration = param.args[0] as SessionConfiguration
-                                                outputConfiguration = OutputConfiguration(c2_virtual_surface!!)
-                                                fake_sessionConfiguration = SessionConfiguration(
-                                                    sessionConfiguration!!.getSessionType(),
-                                                    Arrays.asList<OutputConfiguration>(outputConfiguration),
-                                                    sessionConfiguration!!.getExecutor(),
-                                                    sessionConfiguration!!.getStateCallback()
-                                                )
-                                                param.args[0] = fake_sessionConfiguration
-                                                logDebug("Replaced with fake SessionConfiguration", null, false, lpparam)
-                                            }
-                                        // >>>>> 新增/修改 START <<<<<
-                                        } catch(t: Throwable) {
-                                            logError(t, "createCaptureSession(Config)", lpparam)
-                                        }
-                                        // >>>>> 新增/修改 END <<<<<
-                                    }
-                                })
-                        }
-                    }
-                // >>>>> 新增/修改 START <<<<<
-                } catch(t: Throwable) {
+                } catch (t: Throwable) {
                     logError(t, "onOpened", lpparam)
                 }
-                // >>>>> 新增/修改 END <<<<<
             }
         })
 
-
+        // ------------------------------------------------------------------------------------
+        // 對 Builder 的 Hook 保持不變，它們是正確的
+        // ------------------------------------------------------------------------------------
         XposedHelpers.findAndHookMethod("android.hardware.camera2.CaptureRequest.Builder",
             lpparam.classLoader,
             "addTarget",
             android.view.Surface::class.java, object : XC_MethodHook() {
-                @Throws(Throwable::class)
+                // ... (此處邏輯不變) ...
+                 @Throws(Throwable::class)
                 override fun beforeHookedMethod(param: MethodHookParam) {
-                    // >>>>> 新增/修改 START <<<<<
-                    // 這個方法會頻繁調用，所以預設不在懸浮窗上顯示，避免刷屏
                     logDebug("Hooked: C2.addTarget", "Surface: ${param.args[0]}", false, lpparam)
                     try {
-                    // >>>>> 新增/修改 END <<<<<
                         if (param.args[0] != null) {
                             if(param.args[0] == c2_virtual_surface)return
                             val surfaceInfo = param.args[0].toString()
                             if (!surfaceInfo.contains("Surface(name=null)")) {
                                 if(original_preview_Surface != param.args[0] as Surface ){
                                     original_preview_Surface = param.args[0] as Surface
-                                    // >>>>> 新增/修改 START <<<<<
-                                    // 只有在捕獲到有效的預覽Surface時，才更新懸浮窗
                                     logDebug("C2 Original Surface saved!", "Surface: $original_preview_Surface", true, lpparam)
-                                    // >>>>> 新增/修改 END <<<<<
                                 }
                             }else{
                                 if(c2_reader_Surfcae == null && lpparam.packageName != "com.ss.android.ugc.aweme"){
@@ -815,31 +816,26 @@ class MainHook : IXposedHookLoadPackage {
                                 param.args[0] = c2_virtual_surface
                             }
                         }
-                    // >>>>> 新增/修改 START <<<<<
                     } catch(t: Throwable) {
                         logError(t, "addTarget", lpparam)
                     }
-                    // >>>>> 新增/修改 END <<<<<
                 }
             })
 
         XposedHelpers.findAndHookMethod("android.hardware.camera2.CaptureRequest.Builder",
             lpparam.classLoader,
             "build",object :XC_MethodHook(){
-            @Throws(Throwable::class)
-            override fun beforeHookedMethod(param: MethodHookParam) {
-                // >>>>> 新增/修改 START <<<<<
-                logDebug("Hooked: C2.build", "Triggering camera2Play()", true, lpparam)
-                try {
-                // >>>>> 新增/修改 END <<<<<
-                    camera2Play()
-                // >>>>> 新增/修改 START <<<<<
-                } catch(t: Throwable) {
-                    logError(t, "build", lpparam)
+                // ... (此處邏輯不變) ...
+                @Throws(Throwable::class)
+                override fun beforeHookedMethod(param: MethodHookParam) {
+                    logDebug("Hooked: C2.build", "Triggering camera2Play()", true, lpparam)
+                    try {
+                        camera2Play()
+                    } catch(t: Throwable) {
+                        logError(t, "build", lpparam)
+                    }
                 }
-                // >>>>> 新增/修改 END <<<<<
-            }
-        })
+            })
     }
 
     private fun createVirtualSurface(): Surface? {
