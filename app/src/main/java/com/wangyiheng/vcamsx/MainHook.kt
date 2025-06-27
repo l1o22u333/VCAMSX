@@ -68,6 +68,7 @@ class MainHook : IXposedHookLoadPackage {
 
     // Xposed模块中
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
+        XposedBridge.log("[VCAMSX Debug] handleLoadPackage called for package: ${lpparam.packageName}, process: ${lpparam.processName}")
         if(lpparam.packageName == "com.wangyiheng.vcamsx"){
             return
         }
