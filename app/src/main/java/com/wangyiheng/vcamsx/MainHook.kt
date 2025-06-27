@@ -734,34 +734,42 @@ class MainHook : IXposedHookLoadPackage {
                     // 3. 創建一個可重用的 Hook 回調
                     val captureSessionHook = object : XC_MethodHook() {
                         override fun beforeHookedMethod(methodParam: MethodHookParam) {
-                            // 獲取第一個參數，它通常是 List<Surface> 或 SessionConfiguration
                             val firstArg = methodParam.args.getOrNull(0)
-
-                            // >>>>> 【最終修正 V5】START：使用最穩健的方式拼接日誌 <<<<<
+                            
+                            // >>>>> 【最終修正 V7】START：採用終極防禦性程式設計 <<<<<
                             val method = methodParam.method
-                            // 明確指定參數類型為 Java 的 Class 數組
-                            val paramTypes: Array<Class<*>> = method.parameterTypes
-                            val paramTypeNames = mutableListOf<String>()
-                            // 在類型明確的數組上進行循環
-                            for (type in paramTypes) {
-                                paramTypeNames.add(type.simpleName)
+                            val signatureString: String
+                            try {
+                                // 步驟 1: 明確調用 getter 方法並存儲在一個明確類型的變數中
+                                val paramTypes: Array<Class<*>> = method.parameterTypes
+
+                                // 步驟 2: 手動迭代，避免任何可能引起類型推斷問題的集合操作
+                                val paramTypeNames = mutableListOf<String>()
+                                for (i in paramTypes.indices) {
+                                    paramTypeNames.add(paramTypes[i].simpleName)
+                                }
+
+                                // 步驟 3: 在所有類型都處理完畢後，再進行字串拼接
+                                val paramTypesJoined = paramTypeNames.joinToString(", ")
+                                signatureString = "Signature: ${method.name}($paramTypesJoined)\n\t> Arg[0]: $firstArg"
+                            } catch (e: Exception) {
+                                // 如果在生成日誌簽名時都發生錯誤，則提供一個備用的、絕對安全的日誌輸出
+                                logError(e, "BuildingSignature", lpparam)
+                                signatureString = "Signature: ${method.name}(<Error getting params>)\n\t> Arg[0]: $firstArg"
                             }
-                            val paramTypesString = paramTypeNames.joinToString(", ")
-                            val signatureString = "Signature: ${method.name}($paramTypesString)\n\t> Arg[0]: $firstArg"
-                            // >>>>> 【最終修正 V5】END <<<<<
+                            // >>>>> 【最終修正 V7】END <<<<<
                             
                             logDebug(
                                 "Hooked: C2.createCaptureSession (DYNAMICALLY)",
-                                signatureString, // 使用修正後的字串
+                                signatureString,
                                 true, lpparam
                             )
                             try {
+                                // ... 後續的 when(firstArg) ... 邏輯保持不變 ...
                                 when (firstArg) {
-                                    // 情況一：參數是 SessionConfiguration
                                     is SessionConfiguration -> {
                                         val originalConfig = firstArg
                                         val outputConfig = OutputConfiguration(c2_virtual_surface!!)
-                                        // 注意：在真實替換時，需要保留原始的回調和執行器
                                         val fakeConfig = SessionConfiguration(
                                             originalConfig.sessionType,
                                             listOf(outputConfig),
@@ -771,12 +779,10 @@ class MainHook : IXposedHookLoadPackage {
                                         methodParam.args[0] = fakeConfig
                                         logDebug("Replaced SessionConfiguration with fake config", null, false, lpparam)
                                     }
-                                    // 情況二：參數是 List of Surfaces
                                     is List<*> -> {
                                         methodParam.args[0] = listOf(c2_virtual_surface)
                                         logDebug("Replaced List<Surface> with fake surface list", null, false, lpparam)
                                     }
-                                    // 其他情況暫不處理，但已記錄日誌
                                     else -> {
                                         logDebug("Unsupported createCaptureSession variant found", "First arg type: ${firstArg?.javaClass?.name}", false, lpparam)
                                     }
@@ -784,6 +790,7 @@ class MainHook : IXposedHookLoadPackage {
                             } catch (t: Throwable) {
                                 logError(t, "createCaptureSession_dynamic_hook", lpparam)
                             }
+                            
                         }
                     }
 
