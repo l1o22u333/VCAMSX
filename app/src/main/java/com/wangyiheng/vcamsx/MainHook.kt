@@ -456,7 +456,41 @@ class MainHook : IXposedHookLoadPackage {
             logError(t, "Hooking getCameraInfo", lpparam)
         }
         // >>>>> 【終極偵察包 - 1】END <<<<<
-		
+        // >>>>> 【終極偵察包 - 5】START：Hook Camera2 的入口點 <<<<<
+        try {
+            XposedHelpers.findAndHookMethod("android.hardware.camera2.CameraManager", lpparam.classLoader, "getCameraIdList",
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        logDebug(
+                            "Hooked: C2.getCameraIdList",
+                            "Return (ID List): ${(param.result as? Array<*>)?.contentToString()}\n\t> StackTrace:\n${android.util.Log.getStackTraceString(Throwable())}",
+                            true, lpparam
+                        )
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logError(t, "Hooking getCameraIdList", lpparam)
+        }
+        // >>>>> 【終極偵察包 - 5】END <<<<<
+        // >>>>> 【終極偵察包 - 6】START：Hook Camera2 的特性查詢 <<<<<
+        try {
+            XposedHelpers.findAndHookMethod("android.hardware.camera2.CameraManager", lpparam.classLoader, "getCameraCharacteristics",
+                String::class.java, // 參數是 cameraId
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        logDebug(
+                            "Hooked: C2.getCameraCharacteristics",
+                            "Input (CameraId): ${param.args[0]}\n\t> StackTrace:\n${android.util.Log.getStackTraceString(Throwable())}",
+                            true, lpparam
+                        )
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logError(t, "Hooking getCameraCharacteristics", lpparam)
+        }
+        // >>>>> 【終極偵察包 - 6】END <<<<<
         try {
             XposedHelpers.findAndHookConstructor(
                 "android.graphics.SurfaceTexture", lpparam.classLoader,
