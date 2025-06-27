@@ -1,6 +1,6 @@
-package com.wangyiheng.vcamsx.utils // 確保這個包名和您放置文件的目錄一致
+// 文件名：DebugOverlay.kt
+package com.wangyiheng.vcamsx.utils
 
-// ======================= 新增/補全的 import 語句 START =======================
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
@@ -12,8 +12,8 @@ import android.view.*
 import android.widget.FrameLayout
 import android.widget.TextView
 import de.robv.android.xposed.XposedBridge
-// ======================= 新增/補全的 import 語句 END =======================
-
+import java.io.PrintWriter
+import java.io.StringWriter
 
 object DebugOverlay {
 
@@ -27,25 +27,21 @@ object DebugOverlay {
         mainHandler.post {
             try {
                 if (overlayView == null) {
-                    // 只創建一次
                     windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
                     
-                    // 從上下文中獲取 LayoutInflater，而不是直接創建
                     val layoutInflater = context.getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
 
-                    // 創建懸浮窗視圖
                     overlayView = FrameLayout(context).apply {
-                        setBackgroundColor(Color.parseColor("#80000000")) // 半透明黑色背景
+                        setBackgroundColor(Color.parseColor("#80000000")) 
                     }
                     textView = TextView(context).apply {
                         setTextColor(Color.WHITE)
                         setTextSize(10f)
                         setPadding(10, 10, 10, 10)
-                        text = initialMessage // 初始時就設置文字
+                        text = initialMessage
                     }
                     (overlayView as FrameLayout).addView(textView)
 
-                    // 設置佈局參數
                     val params = WindowManager.LayoutParams(
                         WindowManager.LayoutParams.WRAP_CONTENT,
                         WindowManager.LayoutParams.WRAP_CONTENT,
@@ -61,7 +57,6 @@ object DebugOverlay {
                         y = 100
                     }
 
-                    // 添加觸摸監聽器以實現拖動
                     overlayView?.setOnTouchListener(object : View.OnTouchListener {
                         private var initialX: Int = 0
                         private var initialY: Int = 0
@@ -91,12 +86,27 @@ object DebugOverlay {
                     windowManager?.addView(overlayView, params)
                 }
 
-                // 如果懸浮窗已存在，僅更新文字
                 updateText(initialMessage)
 
             } catch (e: Exception) {
-                XposedBridge.log("[VCAMSX Debug] Error showing overlay: ${e.message}")
-                XposedBridge.log(e)
+                // >>>>> 【修正】統一錯誤日誌的處理方式 START <<<<<
+                val logTitle = "[VCAMSX_DEBUG] !!! ERROR in DebugOverlay.show: ${e.message}"
+                
+                // 將異常堆棧轉換為字串
+                val sw = StringWriter()
+                e.printStackTrace(PrintWriter(sw))
+                val stackTraceString = sw.toString()
+
+                // 拼接完整的、帶有前綴的日誌資訊
+                val fullLogMessage = buildString {
+                    appendLine(logTitle)
+                    stackTraceString.lines().forEach { line ->
+                        append("[VCAMSX_DEBUG] \t")
+                        appendLine(line)
+                    }
+                }
+                XposedBridge.log(fullLogMessage)
+                // >>>>> 【修正】統一錯誤日誌的處理方式 END <<<<<
             }
         }
     }
@@ -115,7 +125,22 @@ object DebugOverlay {
                 try {
                     windowManager?.removeView(overlayView)
                 } catch (e: Exception) {
-                    XposedBridge.log("[VCAMSX Debug] Error hiding overlay: ${e.message}")
+                    // >>>>> 【修正】統一錯誤日誌的處理方式 START <<<<<
+                    val logTitle = "[VCAMSX_DEBUG] !!! ERROR in DebugOverlay.hide: ${e.message}"
+
+                    val sw = StringWriter()
+                    e.printStackTrace(PrintWriter(sw))
+                    val stackTraceString = sw.toString()
+                    
+                    val fullLogMessage = buildString {
+                        appendLine(logTitle)
+                        stackTraceString.lines().forEach { line ->
+                            append("[VCAMSX_DEBUG] \t")
+                            appendLine(line)
+                        }
+                    }
+                    XposedBridge.log(fullLogMessage)
+                    // >>>>> 【修正】統一錯誤日誌的處理方式 END <<<<<
                 } finally {
                     overlayView = null
                     windowManager = null
