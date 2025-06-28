@@ -72,32 +72,35 @@ class HomeController: ViewModel(),KoinComponent {
         }
     }
 
-    fun copyVideoToAppDir(context: Context, videoUri: Uri) {
-        // >>>>> 【最終修正 V3】START：從 Uri 獲取真實路徑並使用 cp 命令 <<<<<
-        val targetFilePath = "/data/local/tmp/vcamsx_video/playing_video.mp4"
-        
-        try {
-            // 1. 調用我們的輔助函數，從 Uri 解析出真實的文件路徑
-            val sourcePath = FileUtils.getPath(context, videoUri)
-            if (sourcePath == null) {
-                Log.e("VCAMSX_HOME", "Failed to get real path from Uri: $videoUri")
-                Toast.makeText(context, "無法解析影片真實路徑", Toast.LENGTH_SHORT).show()
-                return
-            }
-            Log.d("VCAMSX_HOME", "Resolved source path: $sourcePath")
 
-            // 2. 構建 cp 命令，注意路徑要用引號包裹，防止路徑中有空格
+    fun copyVideoToAppDir(context: Context, videoUri: Uri) {
+        // >>>>> 【最終修正 V4】START：採用流複製 + Root cp 的終極方案 <<<<<
+        val targetFilePath = "/data/local/tmp/vcamsx_video/playing_video.mp4"
+        // 在 App 自己的緩存目錄下創建一個臨時文件
+        val tempFile = File(context.cacheDir, "temp_video.mp4")
+
+        try {
+            // 步驟 1: 將用戶選擇的影片內容，通過流的方式，先複製到我們 App 自己的緩存臨時文件中
+            context.contentResolver.openInputStream(videoUri)?.use { inputStream ->
+                FileOutputStream(tempFile).use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
+            Log.d("VCAMSX_HOME", "Video content copied to temporary file: ${tempFile.absolutePath}")
+
+            // 步驟 2: 現在我們有了一個路徑絕對可靠的臨時文件，讓 Root 去複製它
+            val sourcePath = tempFile.absolutePath
             val command = "cp '$sourcePath' '$targetFilePath' && " +
                           "chmod 666 '$targetFilePath' && " +
                           "chcon u:object_r:app_data_file:s0 '$targetFilePath'"
 
             Log.d("VCAMSX_HOME", "Executing root command: $command")
-
-            // 3. 執行 su 命令
+            
+            // 步驟 3: 執行 su 命令
             val process = Runtime.getRuntime().exec(arrayOf("su", "-c", command))
             val exitCode = process.waitFor()
-
-            // 4. 檢查命令是否執行成功
+            
+            // 步驟 4: 檢查命令是否執行成功
             if (exitCode == 0) {
                 Log.d("VCAMSX_HOME", "Video copied to global path successfully with root.")
                 Toast.makeText(context, "影片已選擇並複製成功！", Toast.LENGTH_SHORT).show()
@@ -114,8 +117,14 @@ class HomeController: ViewModel(),KoinComponent {
         } catch (e: Exception) {
             Log.e("VCAMSX_HOME", "Failed to copy video to global path", e)
             Toast.makeText(context, "選擇影片失敗: ${e.message}", Toast.LENGTH_LONG).show()
+        } finally {
+            // 步驟 5: 無論成功與否，都刪掉臨時文件
+            if (tempFile.exists()) {
+                tempFile.delete()
+                Log.d("VCAMSX_HOME", "Temporary file deleted.")
+            }
         }
-        // >>>>> 【最終修正 V3】END <<<<<
+        // >>>>> 【最終修正 V4】END <<<<<
     }
     fun saveState() {
         infoManager.removeVideoStatus()
