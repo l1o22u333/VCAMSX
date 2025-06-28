@@ -653,13 +653,13 @@ class MainHook : IXposedHookLoadPackage {
         }
     }
 
+
     private fun process_callback(param: MethodHookParam) {
         val preview_cb_class: Class<*>? = param.args[0]?.javaClass
         if (preview_cb_class == null) {
             logDebug("process_callback failed: PreviewCallback class is null", null, false, null)
             return
         }
-        
         logDebug("Executing process_callback", "Hooking onPreviewFrame for class: ${preview_cb_class.name}", false, null)
 
         XposedHelpers.findAndHookMethod(preview_cb_class, "onPreviewFrame",
@@ -667,43 +667,42 @@ class MainHook : IXposedHookLoadPackage {
             Camera::class.java, object : XC_MethodHook() {
                 @Throws(Throwable::class)
                 override fun beforeHookedMethod(paramd: MethodHookParam) {
-                    // 這個回調極其頻繁，只在第一次或發生錯誤時記錄
                     try {
                         val localcam = paramd.args[1] as Camera
                         if (localcam == camera_onPreviewFrame) {
-                            // 持續提供數據幀
                             if (data_buffer != null) {
                                 System.arraycopy(data_buffer, 0, paramd.args[0], 0, min(data_buffer.size.toDouble(), (paramd.args[0] as ByteArray).size.toDouble()).toInt())
                             }
                         } else {
-                            // 第一次進入，或相機對象改變
                             logDebug("Hooked: C1.onPreviewFrame (First time)", "Camera: $localcam", true, null)
-
                             camera_callback_calss = preview_cb_class
                             camera_onPreviewFrame = paramd.args[1] as Camera
                             val mwidth = camera_onPreviewFrame!!.parameters.previewSize.width
                             val mheight = camera_onPreviewFrame!!.parameters.previewSize.height
-                            
-                            // 【修正】用我們的日誌系統替換掉不安全的 Toast
                             val sizeInfo = "Video resolution must match camera: W:$mwidth, H:$mheight"
                             logDebug(sizeInfo, null, true, null)
-
                             hw_decode_obj?.stopDecode()
                             hw_decode_obj = VideoToFrames()
                             hw_decode_obj!!.setSaveFrames(OutputImageFormat.NV21)
 
-                            val videoUrl = "content://com.wangyiheng.vcamsx.videoprovider"
-                            val videoPathUri = Uri.parse(videoUrl)
-                            hw_decode_obj!!.decode(videoPathUri)
-                            logDebug("VideoToFrames decoding started for C1 callback", null, false, null)
+                            // >>>>> 【最終修正】START：從 InfoManager 讀取正確的影片路徑 <<<<<
+                            val infoManager = InfoManager(context!!)
+                            val videoInfo = infoManager.getVideoInfo()
+                            if (videoInfo == null || videoInfo.videoUrl.isEmpty()) {
+                                logError(Throwable("No video path found in InfoManager!"), "onPreviewFrame", null)
+                                return
+                            }
+                            val videoPath = videoInfo.videoUrl // 這現在是一個絕對路徑字符串
+                            logDebug("Starting VideoToFrames decoding for C1 callback", "Path: $videoPath", false, null)
+
+                            hw_decode_obj!!.decode(videoPath) // 直接傳入絕對路徑
+                            // >>>>> 【最終修正】END <<<<<
                             
-                            // 第一次填充數據
                             if (data_buffer != null) {
                                 System.arraycopy(data_buffer, 0, paramd.args[0], 0, min(data_buffer.size.toDouble(), (paramd.args[0] as ByteArray).size.toDouble()).toInt())
                             }
                         }
                     } catch (t: Throwable) {
-                        // 為這個內部Hook添加錯誤捕獲
                         logError(t, "onPreviewFrame", null)
                     }
                 }
