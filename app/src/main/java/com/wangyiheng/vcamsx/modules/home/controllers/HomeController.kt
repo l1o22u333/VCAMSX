@@ -114,12 +114,12 @@ class HomeController: ViewModel(),KoinComponent {
                 // 讀取錯誤流以獲取更詳細的失敗原因
                 val error = process.errorStream.bufferedReader().readText()
                 Log.e("VCAMSX_HOME", "Root command error: $error")
-                Toast.makeText(context, "Root 命令執行失敗: $error", Toast.LENGT_LONG).show()
+                Toast.makeText(context, "Root 命令執行失敗: $error", Toast.LENGTH_LONG).show()
             }
             
         } catch (e: Exception) {
             Log.e("VCAMSX_HOME", "Failed to copy video to global path", e)
-            Toast.makeText(context, "選擇影片失敗: ${e.message}", Toast.LENGT_LONG).show()
+            Toast.makeText(context, "選擇影片失敗: ${e.message}", Toast.LENGTH_LONG).show()
         }
         // >>>>> 【Root 方案 V2】END <<<<<
     }
