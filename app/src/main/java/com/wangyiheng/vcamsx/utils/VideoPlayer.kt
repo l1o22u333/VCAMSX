@@ -269,7 +269,7 @@ object VideoPlayer {
         }
     }
 
-    fun c2_reader_play(c2_reader_Surfcae:Surface){
+   fun c2_reader_play(c2_reader_Surfcae:Surface){
         log("c2_reader_play called for surface: $c2_reader_Surfcae")
         if(c2_reader_Surfcae == copyReaderSurface){
             log("Surface is the same as last time, returning.")
