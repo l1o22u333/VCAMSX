@@ -26,6 +26,7 @@ import tv.danmaku.ijk.media.player.IjkMediaPlayer
 import java.io.File
 import java.io.IOException
 import java.net.URL
+import java.io.FileOutputStream
 
 class HomeController: ViewModel(),KoinComponent {
     val apiService: ApiService by inject()
