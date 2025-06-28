@@ -69,9 +69,30 @@ class HomeController: ViewModel(),KoinComponent {
             }
         }
     }
-    fun copyVideoToAppDir(context: Context,videoUri: Uri) {
-        infoManager.removeVideoInfo()
-        infoManager.saveVideoInfo(VideoInfo(videoUrl=videoUri.toString()))
+    fun copyVideoToAppDir(context: Context, videoUri: Uri) {
+        // >>>>> 【Root 方案】START：複製到全局目錄 <<<<<
+        try {
+            val videoFolderPath = "/data/local/tmp/vcamsx_video"
+            val targetFile = File(videoFolderPath, "playing_video.mp4")
+            
+            context.contentResolver.openInputStream(videoUri)?.use { inputStream ->
+                FileOutputStream(targetFile).use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
+            
+            val absolutePath = targetFile.absolutePath
+            Log.d("VCAMSX_HOME", "Video copied to global path: $absolutePath")
+            Toast.makeText(context, "影片已選擇並複製成功！", Toast.LENGTH_SHORT).show()
+
+            infoManager.removeVideoInfo()
+            infoManager.saveVideoInfo(VideoInfo(videoUrl = absolutePath))
+            
+        } catch (e: IOException) {
+            Log.e("VCAMSX_HOME", "Failed to copy video to global path", e)
+            Toast.makeText(context, "選擇影片失敗: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+        // >>>>> 【Root 方案】END <<<<<
     }
     fun saveState() {
         infoManager.removeVideoStatus()
