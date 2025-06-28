@@ -5,6 +5,9 @@ import com.wangyiheng.vcamsx.data.di.appModule
 import com.wangyiheng.vcamsx.data.services.networkModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
+import java.io.DataOutputStream
+import java.io.File
+import android.util.Log
 
 class MyApplication : Application() {
     override fun onCreate() {
