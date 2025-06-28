@@ -275,30 +275,59 @@ object VideoPlayer {
             log("Surface is the same as last time, returning.")
             return
         }
+
         copyReaderSurface = c2_reader_Surfcae
+
         if(c2_hw_decode_obj != null){
             log("Stopping previous c2_hw_decode_obj.")
             c2_hw_decode_obj!!.stopDecode()
             c2_hw_decode_obj = null
         }
+
         c2_hw_decode_obj = VideoToFrames()
         try {
-            // >>>>> 【最終修正】START：從 InfoManager 讀取正確的影片路徑 <<<<<
-            val infoManager = InfoManager(context!!)
-            val videoInfo = infoManager.getVideoInfo()
-            if (videoInfo == null || videoInfo.videoUrl.isEmpty()) {
-                log("!!! ERROR: No video path found in InfoManager!")
+            // >>>>> 【防錯修正 V2】START：添加更詳細的日誌和檢查 <<<<<
+
+            // 步驟 1: 檢查 Context 是否存在，這是所有操作的前提
+            if (context == null) {
+                log("!!! FATAL ERROR: Context is null in c2_reader_play. Cannot initialize InfoManager!")
+                // 也可以考慮在這裡拋出一個異常，讓錯誤更明顯
+                // throw IllegalStateException("Context is null, cannot proceed.")
                 return
             }
-            val videoPath = videoInfo.videoUrl // 這現在是一個絕對路徑字符串
-            log("Starting new c2_hw_decode_obj for path: $videoPath")
             
+            // 步驟 2: 初始化 InfoManager
+            val infoManager = InfoManager(context!!)
+            log("InfoManager initialized.")
+
+            // 步驟 3: 嘗試獲取 VideoInfo
+            val videoInfo = infoManager.getVideoInfo()
+
+            // 步驟 4: 進行詳細的日誌記錄，無論成功或失敗
+            if (videoInfo == null) {
+                log("!!! ERROR: Failed to get VideoInfo from InfoManager. It is null.")
+                Toast.makeText(context, "VCAMSX 錯誤: 未找到影片設置，請重新選擇影片！", Toast.LENGTH_LONG).show()
+                return
+            }
+            
+            if (videoInfo.videoUrl.isEmpty()) {
+                log("!!! ERROR: VideoInfo exists, but its videoUrl is empty.")
+                Toast.makeText(context, "VCAMSX 錯誤: 影片路徑為空，請重新選擇影片！", Toast.LENGTH_LONG).show()
+                return
+            }
+
+            // 如果一切正常，打印出將要使用的路徑
+            val videoPath = videoInfo.videoUrl
+            log("Successfully retrieved video path from InfoManager: $videoPath")
+            
+            // 步驟 5: 執行解碼
             c2_hw_decode_obj!!.setSaveFrames(OutputImageFormat.NV21)
             c2_hw_decode_obj!!.set_surface(c2_reader_Surfcae)
             c2_hw_decode_obj!!.decode(videoPath) // 直接傳入絕對路徑
-            // >>>>> 【最終修正】END <<<<<
+            
+            // >>>>> 【防錯修正 V2】END <<<<<
         }catch (e:Exception){
-            log("!!! ERROR in c2_reader_play: ${e.message}")
+            log("!!! FATAL ERROR in c2_reader_play: ${e.message}")
             XposedBridge.log(e)
         }
     }
