@@ -71,29 +71,57 @@ class HomeController: ViewModel(),KoinComponent {
         }
     }
     fun copyVideoToAppDir(context: Context, videoUri: Uri) {
-        // >>>>> 【Root 方案】START：複製到全局目錄 <<<<<
+        // >>>>> 【Root 方案 V2】START：使用 Root 命令複製並設置權限 <<<<<
+        val videoFolderPath = "/data/local/tmp/vcamsx_video"
+        val targetFilePath = "$videoFolderPath/playing_video.mp4"
+
         try {
-            val videoFolderPath = "/data/local/tmp/vcamsx_video"
-            val targetFile = File(videoFolderPath, "playing_video.mp4")
+            // 1. 使用 ContentResolver 獲取文件的 ParcelFileDescriptor，這是獲取文件路徑的可靠方式
+            val pfd = context.contentResolver.openFileDescriptor(videoUri, "r")
+            if (pfd == null) {
+                Log.e("VCAMSX_HOME", "Failed to get FileDescriptor from Uri")
+                Toast.makeText(context, "無法獲取影片文件描述符", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            // 2. 構建要執行的 shell 命令
+            // cat /proc/self/fd/{fd} 能可靠地讀取文件內容
+            // > {targetFilePath} 將內容重定向（即複製）到我們的目標文件
+            // && 表示上一條命令成功後才執行下一條
+            // chmod 666 讓所有用戶都可讀寫這個文件
+            // chcon ... 設置 SELinux 上下文
+            val command = "cat /proc/self/fd/${pfd.fd} > '$targetFilePath' && " +
+                          "chmod 666 '$targetFilePath' && " +
+                          "chcon u:object_r:app_data_file:s0 '$targetFilePath'"
             
-            context.contentResolver.openInputStream(videoUri)?.use { inputStream ->
-                FileOutputStream(targetFile).use { outputStream ->
-                    inputStream.copyTo(outputStream)
-                }
+            Log.d("VCAMSX_HOME", "Executing root command: $command")
+
+            // 3. 執行 su 命令
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", command))
+            val exitCode = process.waitFor()
+
+            pfd.close() // 關閉文件描述符
+
+            // 4. 檢查命令是否執行成功
+            if (exitCode == 0) {
+                Log.d("VCAMSX_HOME", "Video copied to global path successfully with root.")
+                Toast.makeText(context, "影片已選擇並複製成功！", Toast.LENGTH_SHORT).show()
+
+                infoManager.removeVideoInfo()
+                infoManager.saveVideoInfo(VideoInfo(videoUrl = targetFilePath))
+            } else {
+                Log.e("VCAMSX_HOME", "Root command failed with exit code: $exitCode")
+                // 讀取錯誤流以獲取更詳細的失敗原因
+                val error = process.errorStream.bufferedReader().readText()
+                Log.e("VCAMSX_HOME", "Root command error: $error")
+                Toast.makeText(context, "Root 命令執行失敗: $error", Toast.LENGT_LONG).show()
             }
             
-            val absolutePath = targetFile.absolutePath
-            Log.d("VCAMSX_HOME", "Video copied to global path: $absolutePath")
-            Toast.makeText(context, "影片已選擇並複製成功！", Toast.LENGTH_SHORT).show()
-
-            infoManager.removeVideoInfo()
-            infoManager.saveVideoInfo(VideoInfo(videoUrl = absolutePath))
-            
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             Log.e("VCAMSX_HOME", "Failed to copy video to global path", e)
-            Toast.makeText(context, "選擇影片失敗: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "選擇影片失敗: ${e.message}", Toast.LENGT_LONG).show()
         }
-        // >>>>> 【Root 方案】END <<<<<
+        // >>>>> 【Root 方案 V2】END <<<<<
     }
     fun saveState() {
         infoManager.removeVideoStatus()
