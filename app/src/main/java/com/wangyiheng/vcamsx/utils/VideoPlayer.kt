@@ -275,24 +275,29 @@ object VideoPlayer {
             log("Surface is the same as last time, returning.")
             return
         }
-
         copyReaderSurface = c2_reader_Surfcae
-
         if(c2_hw_decode_obj != null){
             log("Stopping previous c2_hw_decode_obj.")
             c2_hw_decode_obj!!.stopDecode()
             c2_hw_decode_obj = null
         }
-
         c2_hw_decode_obj = VideoToFrames()
         try {
-            val videoUrl = "content://com.wangyiheng.vcamsx.videoprovider"
-            val videoPathUri = Uri.parse(videoUrl)
-            log("Starting new c2_hw_decode_obj for surface.")
+            // >>>>> 【最終修正】START：從 InfoManager 讀取正確的影片路徑 <<<<<
+            val infoManager = InfoManager(context!!)
+            val videoInfo = infoManager.getVideoInfo()
+            if (videoInfo == null || videoInfo.videoUrl.isEmpty()) {
+                log("!!! ERROR: No video path found in InfoManager!")
+                return
+            }
+            val videoPath = videoInfo.videoUrl // 這現在是一個絕對路徑字符串
+            log("Starting new c2_hw_decode_obj for path: $videoPath")
+            
             c2_hw_decode_obj!!.setSaveFrames(OutputImageFormat.NV21)
             c2_hw_decode_obj!!.set_surface(c2_reader_Surfcae)
-            c2_hw_decode_obj!!.decode(videoPathUri)
-        } catch (e:Exception){
+            c2_hw_decode_obj!!.decode(videoPath) // 直接傳入絕對路徑
+            // >>>>> 【最終修正】END <<<<<
+        }catch (e:Exception){
             log("!!! ERROR in c2_reader_play: ${e.message}")
             XposedBridge.log(e)
         }
