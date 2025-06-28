@@ -30,7 +30,8 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 import kotlinx.coroutines.*
 import java.util.*
 import kotlin.math.min
-import com.wangyiheng.vcamsx.utils.DebugOverlay // <<<<<<<<<<<<<<<< 1. 確保導入 DebugOverlay
+import com.wangyiheng.vcamsx.utils.DebugOverlay
+import com.wangyiheng.vcamsx.utils.InfoManager
 
 class MainHook : IXposedHookLoadPackage {
     companion object {
