@@ -27,6 +27,7 @@ import java.io.File
 import java.io.IOException
 import java.net.URL
 import java.io.FileOutputStream
+import com.wangyiheng.vcamsx.utils.FileUtils
 
 class HomeController: ViewModel(),KoinComponent {
     val apiService: ApiService by inject()
@@ -70,37 +71,31 @@ class HomeController: ViewModel(),KoinComponent {
             }
         }
     }
-    fun copyVideoToAppDir(context: Context, videoUri: Uri) {
-        // >>>>> 【Root 方案 V2】START：使用 Root 命令複製並設置權限 <<<<<
-        val videoFolderPath = "/data/local/tmp/vcamsx_video"
-        val targetFilePath = "$videoFolderPath/playing_video.mp4"
 
+    fun copyVideoToAppDir(context: Context, videoUri: Uri) {
+        // >>>>> 【最終修正 V3】START：從 Uri 獲取真實路徑並使用 cp 命令 <<<<<
+        val targetFilePath = "/data/local/tmp/vcamsx_video/playing_video.mp4"
+        
         try {
-            // 1. 使用 ContentResolver 獲取文件的 ParcelFileDescriptor，這是獲取文件路徑的可靠方式
-            val pfd = context.contentResolver.openFileDescriptor(videoUri, "r")
-            if (pfd == null) {
-                Log.e("VCAMSX_HOME", "Failed to get FileDescriptor from Uri")
-                Toast.makeText(context, "無法獲取影片文件描述符", Toast.LENGTH_SHORT).show()
+            // 1. 調用我們的輔助函數，從 Uri 解析出真實的文件路徑
+            val sourcePath = FileUtils.getPath(context, videoUri)
+            if (sourcePath == null) {
+                Log.e("VCAMSX_HOME", "Failed to get real path from Uri: $videoUri")
+                Toast.makeText(context, "無法解析影片真實路徑", Toast.LENGTH_SHORT).show()
                 return
             }
+            Log.d("VCAMSX_HOME", "Resolved source path: $sourcePath")
 
-            // 2. 構建要執行的 shell 命令
-            // cat /proc/self/fd/{fd} 能可靠地讀取文件內容
-            // > {targetFilePath} 將內容重定向（即複製）到我們的目標文件
-            // && 表示上一條命令成功後才執行下一條
-            // chmod 666 讓所有用戶都可讀寫這個文件
-            // chcon ... 設置 SELinux 上下文
-            val command = "cat /proc/self/fd/${pfd.fd} > '$targetFilePath' && " +
+            // 2. 構建 cp 命令，注意路徑要用引號包裹，防止路徑中有空格
+            val command = "cp '$sourcePath' '$targetFilePath' && " +
                           "chmod 666 '$targetFilePath' && " +
                           "chcon u:object_r:app_data_file:s0 '$targetFilePath'"
-            
+
             Log.d("VCAMSX_HOME", "Executing root command: $command")
 
             // 3. 執行 su 命令
             val process = Runtime.getRuntime().exec(arrayOf("su", "-c", command))
             val exitCode = process.waitFor()
-
-            pfd.close() // 關閉文件描述符
 
             // 4. 檢查命令是否執行成功
             if (exitCode == 0) {
@@ -111,17 +106,16 @@ class HomeController: ViewModel(),KoinComponent {
                 infoManager.saveVideoInfo(VideoInfo(videoUrl = targetFilePath))
             } else {
                 Log.e("VCAMSX_HOME", "Root command failed with exit code: $exitCode")
-                // 讀取錯誤流以獲取更詳細的失敗原因
                 val error = process.errorStream.bufferedReader().readText()
                 Log.e("VCAMSX_HOME", "Root command error: $error")
                 Toast.makeText(context, "Root 命令執行失敗: $error", Toast.LENGTH_LONG).show()
             }
-            
+
         } catch (e: Exception) {
             Log.e("VCAMSX_HOME", "Failed to copy video to global path", e)
             Toast.makeText(context, "選擇影片失敗: ${e.message}", Toast.LENGTH_LONG).show()
         }
-        // >>>>> 【Root 方案 V2】END <<<<<
+        // >>>>> 【最終修正 V3】END <<<<<
     }
     fun saveState() {
         infoManager.removeVideoStatus()
